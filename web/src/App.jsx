@@ -4,6 +4,7 @@ import { createFloorMachine, FloorState } from './floor.js'
 import { createAudioEngine } from './audio.js'
 import { makeRehearsalToneUrl } from './devSim.js'
 import { parseFinalMarkdown } from './finalMarkdown.js'
+import { isAudioLeader, joinAudioLeaderElection, subscribeAudioLeader } from './audioLeader.js'
 import CaptureField from './components/CaptureField.jsx'
 import Document from './components/Document.jsx'
 import Orb from './components/Orb.jsx'
@@ -184,6 +185,7 @@ export default function App() {
   const [resetSignal, setResetSignal] = useState(0)
   const [shareUrl, setShareUrl] = useState(null)
   const [shareDismissSignal, setShareDismissSignal] = useState(0)
+  const [audioRole, setAudioRole] = useState('muted') // 'speaker' | 'muted' | 'observer'
 
   const logEvent = useCallback((kind, detail = '') => {
     setEvents((prev) => {
@@ -279,7 +281,7 @@ export default function App() {
           setBannerObjectionId(objection.id)
           logEvent('interrupt_received', `${objection.kind} (${objection.id}): ${objection.message}`)
 
-          if (msg.audio_url) {
+          if (msg.audio_url && isAudioLeader()) {
             audioRef.current
               ?.play(msg.audio_url, () => {
                 floorRef.current?.armSpeaking(objection.message, { isObjection: true })
@@ -290,7 +292,8 @@ export default function App() {
                 floorRef.current?.audioEnded(configRef.current.GRACE_MS)
               })
           }
-          // No audio → banner + glow only, floor stays USER_FLOOR (§13.D).
+          // No audio, or another tab is the audio leader → banner + glow
+          // only, floor stays USER_FLOOR (§13.D).
           break
         }
 
@@ -314,7 +317,7 @@ export default function App() {
 
         case 'readback': {
           logEvent('readback_received', msg.text || '')
-          if (msg.audio_url) {
+          if (msg.audio_url && isAudioLeader()) {
             audioRef.current
               ?.play(msg.audio_url, () => {
                 floorRef.current?.armSpeaking(msg.text || '', { isObjection: false })
@@ -449,6 +452,22 @@ export default function App() {
       window.removeEventListener('keydown', scheduleRefocus, true)
       window.removeEventListener('focusin', scheduleRefocus, true)
     }
+  }, [])
+
+  // ---- audio leadership: exactly one tab plays Critic/readback audio ----
+  // (duplicate tabs each playing the same clip a beat apart sounds like an
+  // echo even on earphones — see audioLeader.js)
+  useEffect(() => {
+    if (isObserver) {
+      setAudioRole('observer')
+      return undefined
+    }
+    joinAudioLeaderElection()
+    return subscribeAudioLeader((leads) => {
+      setAudioRole(leads ? 'speaker' : 'muted')
+      if (leads) logEvent('audio_leader', 'this tab plays critic audio')
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const glowingBlockIds = useMemo(() => {
@@ -621,6 +640,7 @@ export default function App() {
           onSetDuckEnabled={handleSetDuckEnabled}
           onSetDuckThreshold={handleSetDuckThreshold}
           micStatus={micStatus}
+          audioRole={audioRole}
           textareaRef={captureFieldRef}
           onBargeInNow={handleBargeInNow}
           onEchoNow={handleEchoNow}

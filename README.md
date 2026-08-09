@@ -50,6 +50,8 @@ wrap it up · read that back · ignore that · export · share this · new docum
 
 **Refresh = new take.** Reloading the main tab starts a fresh session (the old transcript is dropped server-side too). WS reconnects after a network blip never reset, a running replay is never clobbered, and a second read-only tab should use `?observe=1` so it joins without wiping anything (it receives the current document on connect).
 
+**One tab speaks.** Every connected tab receives the Critic's interrupt, but exactly one tab plays the audio (automatic leader election with failover; the DevPanel "audio" row shows which). Duplicate tabs used to each play the same clip a beat apart — which sounds like an echo even on earphones.
+
 ## Connect VoiceOS as an MCP client (agent mode)
 
 Draft is also an MCP server: the same pipeline is exposed at `http://localhost:8000/mcp` (streamable HTTP, 8 tools: `draft_add`, `draft_wrap_up`, `draft_read_back`, `draft_ignore_objection`, `draft_new_document`, `draft_get_document`, `draft_export`, `draft_share`). With the Draft server running:

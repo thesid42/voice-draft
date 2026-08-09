@@ -107,6 +107,7 @@ export default function DevPanel({
   onSetDuckEnabled,
   onSetDuckThreshold,
   micStatus, // { available: true|false|null, detail }
+  audioRole, // 'speaker' | 'muted' | 'observer' — see audioLeader.js
   textareaRef,
   onBargeInNow,
   onEchoNow,
@@ -185,6 +186,15 @@ export default function DevPanel({
         <Row label="mic">
           <span style={{ fontFamily: 'var(--font-sans)', fontSize: '0.72rem', color: 'var(--ink)' }}>
             {micStatus.available === null ? 'requesting…' : micStatus.available ? 'ok' : 'denied'}
+          </span>
+        </Row>
+        <Row label="audio">
+          <span style={{ fontFamily: 'var(--font-sans)', fontSize: '0.72rem', color: 'var(--ink)' }}>
+            {audioRole === 'speaker'
+              ? 'this tab speaks'
+              : audioRole === 'observer'
+                ? 'observer (silent)'
+                : 'muted — another tab speaks'}
           </span>
         </Row>
         {micStatus.available === false && (
