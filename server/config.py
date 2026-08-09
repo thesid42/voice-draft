@@ -68,6 +68,7 @@ MODEL_WRITER: str = _str_env("MODEL_WRITER", "gpt-4o")
 MODEL_CRITIC: str = _str_env("MODEL_CRITIC", "gpt-4o")
 TTS_MODEL: str = _str_env("TTS_MODEL", "tts-1")
 TTS_VOICE: str = _str_env("TTS_VOICE", "onyx")
+# OpenRouter: openai/gpt-4o-mini-tts-* is often unpublished; voxtral-mini-tts works.
 
 # Gate rule 4 (duplicate objection message) similarity threshold. Jaccard
 # over lowercase, punctuation-stripped token sets. Fixed per SPEC.md §13.E

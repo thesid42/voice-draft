@@ -151,6 +151,17 @@ async def _run(
     refs = data.get("refs", []) or []
     objection_id = state.next_objection_id()
 
+    # Claim cooldown + dedup BEFORE TTS. Two critic tasks often finish
+    # together; if we wait until after synth, both pass the gate, the
+    # client starts clip A then immediately kill+plays clip B — that
+    # sounds like a beep. Spec counters update "when an interrupt fires";
+    # fire = gate allow, not "after mp3 lands".
+    objection = Objection(id=objection_id, kind=kind, message=message, refs=refs, status="spoken")
+    state.objections.append(objection)
+    state.last_interrupt_ts = now
+    state.utterances_since_interrupt = 0
+    logger.info("gate decision=allow id=%s", objection_id)
+
     audio_url = None
     if config.runtime_config["BROWSER_TTS"]:
         audio_url = await tts.synthesize(objection_id, message)
@@ -161,13 +172,6 @@ async def _run(
         logger.info("critic interrupt aborted post-tts: session was reset mid-run")
         await _finish(None)
         return
-
-    objection = Objection(id=objection_id, kind=kind, message=message, refs=refs, status="spoken")
-    state.objections.append(objection)
-    state.last_interrupt_ts = now
-    state.utterances_since_interrupt = 0
-
-    logger.info("gate decision=allow id=%s", objection_id)
     await broadcast(
         {
             "type": "interrupt",

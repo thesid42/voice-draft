@@ -23,7 +23,8 @@ const DEFAULT_CONFIG = {
   BROWSER_TTS: null,
 }
 
-const BANNER_HIDE_MS = 10000 // §6: banner auto-hides ~10s after audio ends
+// Banner stays up while the objection is spoken so the user can read it
+// and reply. It clears on answered/dismissed (server objection_update).
 const EVENT_LOG_MAX = 20 // §13.E: rolling last-20 event log
 const DEV_PANEL_WIDTH = 360
 
@@ -148,7 +149,6 @@ export default function App() {
   const wsRef = useRef(null)
   const floorRef = useRef(null)
   const audioRef = useRef(null)
-  const bannerHideTimerRef = useRef(null)
 
   const configRef = useRef({ ...DEFAULT_CONFIG })
   const [config, setConfigState] = useState(configRef.current)
@@ -184,7 +184,6 @@ export default function App() {
   const resolveActiveObjections = useCallback((status) => {
     setObjections((prev) => prev.map((o) => (o.status === 'spoken' ? { ...o, status } : o)))
     setBannerObjectionId(null)
-    clearTimeout(bannerHideTimerRef.current)
   }, [])
 
   // Every outgoing utterance (real chunker output, or a barge-in forward)
@@ -257,18 +256,12 @@ export default function App() {
             message: msg.message,
             refs: Array.isArray(msg.refs) ? msg.refs : [],
             status: 'spoken',
+            audioUrl: msg.audio_url || null,
             ts: Date.now(),
           }
           setObjections((prev) => [...prev.filter((o) => o.id !== objection.id), objection])
           setBannerObjectionId(objection.id)
           logEvent('interrupt_received', `${objection.kind} (${objection.id}): ${objection.message}`)
-
-          const scheduleBannerHide = () => {
-            clearTimeout(bannerHideTimerRef.current)
-            bannerHideTimerRef.current = setTimeout(() => {
-              setBannerObjectionId((cur) => (cur === objection.id ? null : cur))
-            }, BANNER_HIDE_MS)
-          }
 
           if (msg.audio_url) {
             audioRef.current
@@ -279,12 +272,9 @@ export default function App() {
               .then(() => {
                 setObjectionSpeaking(false)
                 floorRef.current?.audioEnded(configRef.current.GRACE_MS)
-                scheduleBannerHide()
               })
-          } else {
-            // §13.D: TTS failure -> banner + glow only, floor stays USER_FLOOR.
-            scheduleBannerHide()
           }
+          // No audio → banner + glow only, floor stays USER_FLOOR (§13.D).
           break
         }
 
@@ -344,7 +334,6 @@ export default function App() {
           setBannerObjectionId(null)
           setFinalDoc(null)
           setObjectionSpeaking(false)
-          clearTimeout(bannerHideTimerRef.current)
           audioRef.current?.stopImmediately()
           floorRef.current?.reset()
           setResetSignal((n) => n + 1)
@@ -372,6 +361,7 @@ export default function App() {
         logEvent('barge_in', text)
       },
       onEchoDropped: (text) => logEvent('echo_dropped', text),
+      onHold: (text) => logEvent('held_during_critic', text),
       onStateChange: (s) => setFloorState(s),
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -461,9 +451,26 @@ export default function App() {
     logEvent('command_routed', 'dismiss (banner button)')
   }
 
+  function handleHearAgain() {
+    const url = bannerObjection?.audioUrl
+    const script = bannerObjection?.message || ''
+    if (!url) return
+    audioRef.current
+      ?.play(url, () => {
+        floorRef.current?.armSpeaking(script, { isObjection: true })
+        setObjectionSpeaking(true)
+      })
+      .then(() => {
+        setObjectionSpeaking(false)
+        floorRef.current?.audioEnded(configRef.current.GRACE_MS)
+      })
+    logEvent('hear_again', bannerObjection?.id || '')
+  }
+
   function handleBargeInNow() {
     floorRef.current?.feed(
       "Ignore previous direction, switching topics: let's talk about weekend hiking trails instead.",
+      { bargeIn: true },
     )
   }
 
@@ -555,7 +562,16 @@ export default function App() {
       </div>
 
       <Orb writerStatus={writerStatus} speaking={speaking} objectionSpeaking={objectionSpeaking} />
-      <InterruptBanner objection={bannerObjection} onIgnore={handleIgnoreBanner} />
+      <InterruptBanner
+        objection={bannerObjection}
+        refBlocks={(bannerObjection?.refs || [])
+          .map((id) => doc.blocks.find((b) => b.id === id))
+          .filter(Boolean)}
+        onIgnore={handleIgnoreBanner}
+        onHearAgain={handleHearAgain}
+        canHearAgain={Boolean(bannerObjection?.audioUrl)}
+        leftInset={isDev ? DEV_PANEL_WIDTH : 0}
+      />
       <ConnDot status={connStatus} />
 
       <CaptureField
@@ -564,6 +580,9 @@ export default function App() {
         onUtterance={(text) => floorRef.current?.feed(text)}
         leftInset={isDev ? DEV_PANEL_WIDTH : 0}
         resetSignal={resetSignal}
+        placeholder={
+          bannerObjection ? 'Answer out loud — or say Draft, ignore that' : 'listening… VoiceOS types here'
+        }
       />
 
       {isDev && (

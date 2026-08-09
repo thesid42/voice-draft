@@ -91,17 +91,26 @@ export function makeRehearsalToneUrl(seconds = 4) {
  * @param {string} fullText
  * @param {object} [opts]
  * @param {() => boolean} [opts.shouldStop]  checked between bursts; abort if true
+ * @param {() => boolean} [opts.shouldPause]  while true, wait (Critic speaking)
  * @param {(piece: string) => void} [opts.onBurst]
  */
 export async function speakIntoField(el, fullText, opts = {}) {
-  const { shouldStop, onBurst } = opts
+  const { shouldStop, shouldPause, onBurst } = opts
   const sentences = sentenceSplit(fullText)
 
+  async function waitIfPaused() {
+    while (shouldPause?.()) {
+      if (shouldStop?.()) return true
+      await sleep(100)
+    }
+    return shouldStop?.()
+  }
+
   for (const sentence of sentences) {
-    if (shouldStop?.()) return
+    if (await waitIfPaused()) return
     const bursts = wordBursts(sentence)
     for (let i = 0; i < bursts.length; i += 1) {
-      if (shouldStop?.()) return
+      if (await waitIfPaused()) return
       const isLast = i === bursts.length - 1
       const sep = el.value && !el.value.endsWith(' ') ? ' ' : ''
       setNativeValue(el, el.value + sep + bursts[i])

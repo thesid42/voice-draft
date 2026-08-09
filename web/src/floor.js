@@ -7,8 +7,12 @@
 //   objection OR readback, per §13.C: ANY app-played audio arms the floor)
 //     chunker output -> quarantine -> echoMatch(text, currentScript)
 //       match    -> drop silently (our own TTS transcribed back)
-//       no match -> BARGE-IN: stop audio immediately, send control:barged_in,
-//                   forward text as utterance, -> USER_FLOOR.
+//       no match -> HOLD until audio ends, then forward as normal utterances.
+//                   Demo scripts / VoiceOS often keep typing the next line
+//                   while the Critic is still speaking; treating that as
+//                   barge-in cut the TTS off mid-sentence. Explicit barge-in
+//                   (DevPanel / feed(..., { bargeIn: true })) still kills
+//                   audio immediately.
 //
 //   GRACE (for GRACE_MS after audio ends)
 //     matcher stays armed (VoiceOS's transcription of our audio often lands
@@ -24,7 +28,9 @@ export const FloorState = Object.freeze({
   GRACE: 'GRACE',
 })
 
-const ECHO_THRESHOLD = 0.6
+// Slightly below the spec's 0.6: VoiceOS polishes TTS back into the field
+// and often drops a word or two; 0.45 still ignores real next-line answers.
+const ECHO_THRESHOLD = 0.45
 
 function tokenize(s) {
   return (s || '')
@@ -52,13 +58,15 @@ export function echoMatch(incoming, script) {
  * @param {(text: string) => void} callbacks.onSend        forward text as a normal utterance
  * @param {(text: string) => void} callbacks.onBargeIn      real barge-in: stop audio + control:barged_in (text is also sent via onSend right after)
  * @param {(text: string) => void} callbacks.onEchoDropped  echo matched -> silently dropped
+ * @param {(text: string) => void} [callbacks.onHold]       unmatched text parked until Critic audio ends
  * @param {(state: string) => void} [callbacks.onStateChange]
  */
-export function createFloorMachine({ onSend, onBargeIn, onEchoDropped, onStateChange }) {
+export function createFloorMachine({ onSend, onBargeIn, onEchoDropped, onHold, onStateChange }) {
   let state = FloorState.USER_FLOOR
   let script = ''
   let isObjection = false
   let graceTimer = null
+  let held = []
 
   function setState(next) {
     if (state === next) return
@@ -75,9 +83,28 @@ export function createFloorMachine({ onSend, onBargeIn, onEchoDropped, onStateCh
     setState(FloorState.AGENT_SPEAKING)
   }
 
+  function flushHeld() {
+    const pending = held
+    held = []
+    for (const t of pending) onSend(t)
+  }
+
+  function forceBargeIn(text) {
+    clearTimeout(graceTimer)
+    graceTimer = null
+    script = ''
+    isObjection = false
+    held = []
+    setState(FloorState.USER_FLOOR)
+    onBargeIn(text)
+    onSend(text)
+  }
+
   /** Call when the app-played audio ends (or fails to start at all). */
   function audioEnded(graceMs) {
     if (state === FloorState.USER_FLOOR) return
+    // Deliver lines that arrived mid-playback now that the Critic is done.
+    flushHeld()
     setState(FloorState.GRACE)
     clearTimeout(graceTimer)
     graceTimer = setTimeout(() => {
@@ -88,8 +115,17 @@ export function createFloorMachine({ onSend, onBargeIn, onEchoDropped, onStateCh
     }, Math.max(0, graceMs))
   }
 
-  /** Feed one finished utterance (from the real chunker, or DevPanel sim). */
-  function feed(text) {
+  /**
+   * Feed one finished utterance (from the real chunker, or DevPanel sim).
+   * @param {string} text
+   * @param {{ bargeIn?: boolean }} [opts]  bargeIn: kill audio now (DevPanel)
+   */
+  function feed(text, opts = {}) {
+    if (opts.bargeIn && state === FloorState.AGENT_SPEAKING) {
+      forceBargeIn(text)
+      return
+    }
+
     if (state === FloorState.USER_FLOOR) {
       onSend(text)
       return
@@ -101,17 +137,18 @@ export function createFloorMachine({ onSend, onBargeIn, onEchoDropped, onStateCh
       return
     }
 
-    // No match: real user speech overlapping our own playback/grace window.
-    const wasAgentSpeaking = state === FloorState.AGENT_SPEAKING
+    if (state === FloorState.AGENT_SPEAKING) {
+      held.push(text)
+      onHold?.(text)
+      return
+    }
+
+    // GRACE: unmatched text is a real next utterance, not barge-in.
     clearTimeout(graceTimer)
     graceTimer = null
     script = ''
     isObjection = false
     setState(FloorState.USER_FLOOR)
-
-    if (wasAgentSpeaking) {
-      onBargeIn(text)
-    }
     onSend(text)
   }
 
@@ -120,6 +157,7 @@ export function createFloorMachine({ onSend, onBargeIn, onEchoDropped, onStateCh
     graceTimer = null
     script = ''
     isObjection = false
+    held = []
     setState(FloorState.USER_FLOOR)
   }
 

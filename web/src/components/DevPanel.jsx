@@ -98,6 +98,8 @@ export default function DevPanel({
   const [simText, setSimText] = useState('')
   const [simBusy, setSimBusy] = useState(false)
   const stopFlagRef = useRef(false)
+  const floorStateRef = useRef(floorState)
+  floorStateRef.current = floorState
 
   const floorIdle = floorState === 'USER_FLOOR'
 
@@ -107,7 +109,12 @@ export default function DevPanel({
     stopFlagRef.current = false
     setSimBusy(true)
     try {
-      await speakIntoField(el, text.trim(), { shouldStop: () => stopFlagRef.current })
+      await speakIntoField(el, text.trim(), {
+        shouldStop: () => stopFlagRef.current,
+        // Don't type the next demo line over Critic TTS — that used to
+        // barge-in and cut the objection off mid-sentence.
+        shouldPause: () => floorStateRef.current === 'AGENT_SPEAKING',
+      })
     } finally {
       setSimBusy(false)
     }

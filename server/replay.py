@@ -65,6 +65,13 @@ async def stop() -> tuple[bool, str]:
 async def _run(events: list[dict], handle_message: HandleMessage) -> None:
     global _task
     try:
+        # Always start from a blank session. Replaying into a doc that
+        # already has answered objections makes the Critic stay_silent
+        # ("don't repeat a past objection") and the Gate drop duplicates
+        # / cooldown — which looks like "no feedback" on demo reruns.
+        logger.info("replay: resetting session before script")
+        await handle_message({"type": "utterance", "text": "Draft, new document", "ts": 0})
+
         for event in events:
             if not isinstance(event, dict):
                 continue

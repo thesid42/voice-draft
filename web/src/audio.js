@@ -114,7 +114,14 @@ export function createAudioEngine({
     if (!el.paused) {
       el.pause()
     }
-    el.currentTime = 0
+    // Don't seek currentTime=0 — that click/pop is the "beep" on benign
+    // script reruns and when a second interrupt preempts the first.
+    el.removeAttribute('src')
+    try {
+      el.load()
+    } catch {
+      /* ignore */
+    }
     el.volume = 1
     if (playing) {
       playing = false

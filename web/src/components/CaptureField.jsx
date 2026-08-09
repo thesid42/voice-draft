@@ -8,7 +8,14 @@ import { createChunker } from '../chunker.js'
 // the DOM node is the source of truth so that native/synthetic `input`
 // events (real VoiceOS keystrokes, or the DevPanel's native-setter sim)
 // are picked up identically to a user typing directly into it.
-export default function CaptureField({ textareaRef, getPauseMs, onUtterance, leftInset = 0, resetSignal }) {
+export default function CaptureField({
+  textareaRef,
+  getPauseMs,
+  onUtterance,
+  leftInset = 0,
+  resetSignal,
+  placeholder = 'listening…',
+}) {
   const chunkerRef = useRef(null)
   const [justSent, setJustSent] = useState('')
   const [justSentKey, setJustSentKey] = useState(0)
@@ -77,7 +84,7 @@ export default function CaptureField({ textareaRef, getPauseMs, onUtterance, lef
           autoCorrect="off"
           aria-label="Voice capture field"
           data-capture-field="true"
-          placeholder={hasText ? '' : 'listening…'}
+          placeholder={hasText ? '' : placeholder}
           onInput={handleInput}
           className="capture-textarea w-full resize-none bg-transparent outline-none"
           style={{
