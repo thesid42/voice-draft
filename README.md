@@ -46,7 +46,33 @@ Without a key it verifies the protocol layer (hello/set_config/export/reset/404s
 
 ## Voice commands (say "Draft, …")
 
-wrap it up · read that back · ignore that · export · new document
+wrap it up · read that back · ignore that · export · share this · new document
+
+## Connect VoiceOS as an MCP client (agent mode)
+
+Draft is also an MCP server: the same pipeline is exposed at `http://localhost:8000/mcp` (streamable HTTP, 8 tools: `draft_add`, `draft_wrap_up`, `draft_read_back`, `draft_ignore_objection`, `draft_new_document`, `draft_get_document`, `draft_export`, `draft_share`). With the Draft server running:
+
+```
+voiceos add mcp http://localhost:8000/mcp
+```
+
+Then speak naturally in VoiceOS agent mode — "add to my draft: …", "read my draft back", "wrap up my draft". Tool results carry the Critic's objections (`objection` / `pending_objection`) so VoiceOS can voice them; the on-stage browser view updates live from the same in-process state. On the first MCP call the server auto-mutes browser TTS (`BROWSER_TTS` → 0, DevPanel-toggleable) so our Critic audio can't loop back through VoiceOS's mic. If VoiceOS's `add mcp` only accepts a local command (not a URL), a ~60-line stdio proxy over `POST /rpc` + `GET /state` is the demo-day fallback — see SPEC §14.
+
+## Convex live share (audience view)
+
+"Draft, share this" (or the `draft_share` MCP tool) shows a QR code — the audience follows the document and objections **live on their phones** via Convex reactive queries.
+
+One-time setup (your account):
+
+```bash
+npx convex login
+```
+
+```bash
+npx convex dev --once
+```
+
+That creates the deployment and prints its URL — put it in `.env` as `CONVEX_URL=` (server mirror) and in the repo secret `VITE_CONVEX_URL` (audience page build). The audience page deploys to GitHub Pages via `.github/workflows/deploy-watch.yml` on push; then set `AUDIENCE_BASE_URL=https://thesid42.github.io/voice-draft/watch.html#` in `.env`. Without `CONVEX_URL` everything still runs — the mirror is a silent no-op.
 
 ## Tuning (live sliders in DevPanel; defaults in `.env` / `server/config.py`)
 
@@ -68,6 +94,8 @@ wrap it up · read that back · ignore that · export · new document
 6. Speaker volume: loud enough for the room, low enough that ducking + echo matcher cope. Headphones for rehearsal only — the demo needs the room to hear the Critic.
 7. Close the DevPanel (`?dev=1` off) for the actual demo. Zoom the browser so the doc is readable from the back.
 8. Kill notifications / focus assist on the demo machine (a toast stealing focus breaks VoiceOS targeting).
+9. MCP mode: `voiceos add mcp http://localhost:8000/mcp` accepted and a test "add to my draft" lands in the doc; confirm `BROWSER_TTS` auto-muted (DevPanel) so VoiceOS doesn't hear our Critic.
+10. Convex: `CONVEX_URL` in `.env`, phone loads the Pages watch URL, "Draft, share this" QR scans from the back row.
 
 ## Repo
 

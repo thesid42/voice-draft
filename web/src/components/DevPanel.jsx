@@ -206,6 +206,13 @@ export default function DevPanel({
             {config.MIN_UTTERANCES_BETWEEN}
           </span>
         </Row>
+        <Row label="browser TTS (server)">
+          <input
+            type="checkbox"
+            checked={config.BROWSER_TTS === undefined || config.BROWSER_TTS === null ? true : !!config.BROWSER_TTS}
+            onChange={(e) => onSetConfig('BROWSER_TTS', e.target.checked ? 1 : 0)}
+          />
+        </Row>
       </section>
 
       {/* --- ducking --------------------------------------------------- */}

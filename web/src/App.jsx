@@ -3,10 +3,12 @@ import { createWsClient } from './ws.js'
 import { createFloorMachine, FloorState } from './floor.js'
 import { createAudioEngine } from './audio.js'
 import { makeRehearsalToneUrl } from './devSim.js'
+import { parseFinalMarkdown } from './finalMarkdown.js'
 import CaptureField from './components/CaptureField.jsx'
 import Document from './components/Document.jsx'
 import Orb from './components/Orb.jsx'
 import InterruptBanner from './components/InterruptBanner.jsx'
+import ShareOverlay from './components/ShareOverlay.jsx'
 import DevPanel from './components/DevPanel.jsx'
 
 const DEFAULT_CONFIG = {
@@ -16,6 +18,9 @@ const DEFAULT_CONFIG = {
   PAUSE_MS: 700,
   MIN_UTTERANCES_BETWEEN: 2,
   has_openai_key: null,
+  // §14.A: server default is 1 (truthy); null here just means "not yet
+  // heard from the server" — DevPanel treats null/undefined as truthy too.
+  BROWSER_TTS: null,
 }
 
 const BANNER_HIDE_MS = 10000 // §6: banner auto-hides ~10s after audio ends
@@ -44,29 +49,6 @@ function classifyUtterance(text) {
   if (norm.includes('export')) return { kind: 'command', action: 'export' }
   if (norm.includes('new') || norm.includes('start over')) return { kind: 'command', action: 'reset' }
   return { kind: 'content' } // unrecognized after "draft" -> fail open, per §5
-}
-
-// Minimal markdown reader for final_doc: "# title" + blank-line paragraphs.
-// No markdown library, per §13.E.
-function parseFinalMarkdown(md) {
-  const lines = (md || '').split('\n')
-  let title = ''
-  let sawTitle = false
-  const rest = []
-  for (const line of lines) {
-    if (!sawTitle && line.trim().startsWith('# ')) {
-      title = line.trim().slice(2).trim()
-      sawTitle = true
-      continue
-    }
-    rest.push(line)
-  }
-  const paragraphs = rest
-    .join('\n')
-    .split(/\n\s*\n/)
-    .map((p) => p.trim())
-    .filter(Boolean)
-  return { title, paragraphs }
 }
 
 function buildDraftMarkdown({ finalDoc, title, blocks }) {
@@ -189,6 +171,8 @@ export default function App() {
   const [events, setEvents] = useState([])
   const [micStatus, setMicStatus] = useState({ available: null, detail: null })
   const [resetSignal, setResetSignal] = useState(0)
+  const [shareUrl, setShareUrl] = useState(null)
+  const [shareDismissSignal, setShareDismissSignal] = useState(0)
 
   const logEvent = useCallback((kind, detail = '') => {
     setEvents((prev) => {
@@ -212,6 +196,12 @@ export default function App() {
       const sent = wsRef.current?.send({ type: 'utterance', text, ts: Date.now() / 1000 })
       logEvent('utterance_sent', text)
       if (!sent) logEvent('ws_offline', `not delivered: "${text}"`)
+      // §14.B: ShareOverlay dismisses on the next dispatched utterance. This
+      // is the single funnel point for all outgoing utterances (real
+      // chunker output AND barge-in forwards), so bumping the signal here
+      // covers both dismiss triggers named in the spec ("click or next
+      // utterance_sent event").
+      setShareDismissSignal((n) => n + 1)
 
       if (cls.kind === 'command') {
         logEvent('command_routed', `${cls.action}: "${text}"`)
@@ -242,6 +232,10 @@ export default function App() {
             PAUSE_MS: cfg.PAUSE_MS ?? configRef.current.PAUSE_MS,
             MIN_UTTERANCES_BETWEEN: cfg.MIN_UTTERANCES_BETWEEN ?? configRef.current.MIN_UTTERANCES_BETWEEN,
             has_openai_key: cfg.has_openai_key ?? configRef.current.has_openai_key,
+            // §14.A: server-owned, default 1. Kept in the whitelist so a
+            // second observer tab (and a page reload) reflect the real
+            // server value instead of always showing DevPanel's fallback.
+            BROWSER_TTS: cfg.BROWSER_TTS ?? configRef.current.BROWSER_TTS,
           }
           configRef.current = merged
           setConfigState(merged)
@@ -332,6 +326,17 @@ export default function App() {
           break
         }
 
+        case 'share': {
+          // §14.B: "draft, share this" / control:share / MCP draft_share all
+          // land here. Store the URL to show ShareOverlay; it dismisses
+          // itself on click or on the next dispatched utterance (see
+          // dispatchUtteranceText's shareDismissSignal bump).
+          const url = typeof msg.url === 'string' ? msg.url : ''
+          setShareUrl(url || null)
+          logEvent('share', url)
+          break
+        }
+
         case 'reset': {
           setDoc({ title: '', blocks: [] })
           setUpdateSeq(0)
@@ -343,6 +348,9 @@ export default function App() {
           audioRef.current?.stopImmediately()
           floorRef.current?.reset()
           setResetSignal((n) => n + 1)
+          // A reset rotates the server-side slug (§14.B), so any share link
+          // currently on screen would point at a now-closed session.
+          setShareUrl(null)
           logEvent('reset', 'session cleared')
           break
         }
@@ -579,6 +587,12 @@ export default function App() {
           events={events}
         />
       )}
+
+      <ShareOverlay
+        url={shareUrl}
+        dismissSignal={shareDismissSignal}
+        onDismiss={() => setShareUrl(null)}
+      />
     </div>
   )
 }

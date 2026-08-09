@@ -10,16 +10,21 @@ import asyncio
 import json
 import logging
 import time
-from typing import Awaitable, Callable
+from typing import Awaitable, Callable, Optional
 
-from server import config, tts
+from server import config, mirror, tts
 from server.gate import evaluate as gate_evaluate
 from server.prompts import CRITIC_SYSTEM
-from server.session import Objection, SessionState
+from server.session import Objection, SessionState, objection_to_dict
 
 logger = logging.getLogger("draft.critic")
 
 Broadcast = Callable[[dict], Awaitable[None]]
+# Invoked exactly once at the end of every _run() (SPEC.md §14.A): the fired
+# Objection, or None on stay_silent/error/gate-drop/reset-abort. Lets the MCP
+# draft_add tool wait (with a timeout) for its own utterance's verdict
+# without a second critic call path.
+OnResult = Callable[[Optional[Objection]], Awaitable[None]]
 
 
 def _build_user_message(state: SessionState, utterance: dict) -> str:
@@ -51,23 +56,44 @@ def _build_user_message(state: SessionState, utterance: dict) -> str:
     return "\n".join(lines)
 
 
-async def handle_content_utterance(state: SessionState, utterance: dict, broadcast: Broadcast) -> None:
+async def handle_content_utterance(
+    state: SessionState,
+    utterance: dict,
+    broadcast: Broadcast,
+    on_result: Optional[OnResult] = None,
+) -> None:
     """Schedule the critic evaluation as an independent background task.
 
     Fire-and-forget by design: the caller does not await the LLM round trip.
     """
-    asyncio.create_task(_run(state, utterance, broadcast))
+    asyncio.create_task(_run(state, utterance, broadcast, on_result))
 
 
-async def _run(state: SessionState, utterance: dict, broadcast: Broadcast) -> None:
+async def _run(
+    state: SessionState,
+    utterance: dict,
+    broadcast: Broadcast,
+    on_result: Optional[OnResult] = None,
+) -> None:
     gen = state.generation
+
+    async def _finish(result: Optional[Objection]) -> None:
+        if on_result is None:
+            return
+        try:
+            await on_result(result)
+        except Exception:  # noqa: BLE001 - a caller's callback bug must not
+            # blow up the critic task.
+            logger.exception("critic on_result callback raised")
 
     if not config.has_openai_key():
         logger.info("critic skipped: no OPENAI_API_KEY")
+        await _finish(None)
         return
     client = config.get_openai_client()
     if client is None:
         logger.info("critic skipped: no OpenAI client")
+        await _finish(None)
         return
 
     messages = [
@@ -85,18 +111,22 @@ async def _run(state: SessionState, utterance: dict, broadcast: Broadcast) -> No
         data = json.loads(response.choices[0].message.content)
     except json.JSONDecodeError:
         logger.info("critic json parse failure -> stay_silent")
+        await _finish(None)
         return
     except Exception as exc:  # noqa: BLE001 - swallow all OpenAI errors
         logger.info("critic openai error=%s -> stay_silent", exc)
+        await _finish(None)
         return
 
     if state.generation != gen:
         logger.info("critic run aborted: session was reset mid-run")
+        await _finish(None)
         return
 
     action = data.get("action")
     if action != "interrupt":
         logger.info("critic verdict=stay_silent")
+        await _finish(None)
         return
 
     confidence = data.get("confidence", 0.0)
@@ -114,21 +144,26 @@ async def _run(state: SessionState, utterance: dict, broadcast: Broadcast) -> No
     )
     if not allowed:
         logger.info("gate decision=drop reason=%s", reason)
+        await _finish(None)
         return
 
     message = data.get("message", "") or ""
     refs = data.get("refs", []) or []
     objection_id = state.next_objection_id()
 
-    audio_url = await tts.synthesize(objection_id, message)
+    audio_url = None
+    if config.runtime_config["BROWSER_TTS"]:
+        audio_url = await tts.synthesize(objection_id, message)
+    else:
+        logger.info("interrupt id=%s audio skipped: BROWSER_TTS=0", objection_id)
 
     if state.generation != gen:
         logger.info("critic interrupt aborted post-tts: session was reset mid-run")
+        await _finish(None)
         return
 
-    state.objections.append(
-        Objection(id=objection_id, kind=kind, message=message, refs=refs, status="spoken")
-    )
+    objection = Objection(id=objection_id, kind=kind, message=message, refs=refs, status="spoken")
+    state.objections.append(objection)
     state.last_interrupt_ts = now
     state.utterances_since_interrupt = 0
 
@@ -143,3 +178,5 @@ async def _run(state: SessionState, utterance: dict, broadcast: Broadcast) -> No
             "audio_url": audio_url,
         }
     )
+    mirror.upsert_objection(state.slug, objection_to_dict(objection))
+    await _finish(objection)

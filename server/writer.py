@@ -13,7 +13,7 @@ import logging
 import time
 from typing import Awaitable, Callable
 
-from server import config
+from server import config, mirror
 from server.prompts import POLISH_SYSTEM, WRITER_SYSTEM
 from server.session import SessionState, apply_patches, doc_update_blocks, render_markdown
 
@@ -166,6 +166,11 @@ async def _run_pass(state: SessionState, batch: list[dict], broadcast: Broadcast
             "title": state.title,
             "blocks": doc_update_blocks(state, touched),
         }
+    )
+    mirror.update_doc(
+        state.slug,
+        state.title,
+        [{"id": bid, "text": state.blocks[bid]} for bid in state.block_order],
     )
 
 

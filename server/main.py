@@ -1,22 +1,45 @@
-"""FastAPI app: /ws, /tts/{id}.mp3, /replay/start, /replay/stop, static serve.
+"""FastAPI app: /ws, /tts/{id}.mp3, /replay/start, /replay/stop, /state, /rpc,
+static serve, and the MCP tool surface mounted at /mcp.
 
 Run from repo root: uvicorn server.main:app --port 8000
 (absolute imports throughout; server/__init__.py makes this a package.)
+
+Construction order (SPEC.md §14.A) matters here: MCPServer.session_manager
+raises RuntimeError until streamable_http_app() has been called, and our
+lifespan (which enters session_manager.run()) has to exist before the
+FastAPI app itself is constructed with it. So: state + every handler
+function are defined first (the MCP deps need real callables to close
+over), then the MCP server + its Starlette app, then the FastAPI app +
+lifespan, then routes, then the MCP app is mounted -- all BEFORE the static
+catch-all, which must stay last since Mount("/") prefix-matches everything.
 """
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import json
 import logging
 import sys
 import time
 from pathlib import Path
+from typing import AsyncIterator, Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.routing import Route
 
-from server import config, critic, replay, router, tts, writer
-from server.session import SessionState, reset_state, render_markdown
+from server import config, critic, mirror, replay, router, tts, writer
+from server.mcp_server import MCPDeps, build_mcp_server
+from server.session import (
+    Objection,
+    SessionState,
+    get_last_block_text,
+    objection_to_dict,
+    render_markdown,
+    reset_state,
+    snapshot as session_snapshot,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -26,8 +49,6 @@ logging.basicConfig(
 logger = logging.getLogger("draft.main")
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-
-app = FastAPI()
 
 state = SessionState()
 connections: set[WebSocket] = set()
@@ -52,7 +73,9 @@ async def broadcast(message: dict) -> None:
 
 
 def _hello_message() -> dict:
-    return {"type": "hello", "config": config.get_config_for_hello()}
+    cfg = config.get_config_for_hello()
+    cfg["slug"] = state.slug
+    return {"type": "hello", "config": cfg}
 
 
 # --- shared message handling (live WS and replay both funnel through here) --
@@ -89,11 +112,24 @@ async def _handle_utterance(data: dict) -> None:
         await _handle_dismiss()
     elif result.kind == "export":
         await _handle_export()
+    elif result.kind == "share":
+        await _handle_share()
     elif result.kind == "reset":
         await _handle_reset()
 
 
-async def _handle_content(text: str, ts) -> None:
+async def _handle_content(
+    text: str,
+    ts,
+    on_result: Optional[critic.OnResult] = None,
+) -> None:
+    """Append `text` to the transcript and kick off the writer + critic.
+
+    `on_result`, when given, is threaded straight through to the critic
+    (SPEC.md §14.A) -- this is the ONLY content-handling path; the MCP
+    draft_add tool calls this exact function (via _mcp_handle_add below)
+    rather than re-implementing any of it.
+    """
     utterance = {"text": text, "ts": ts}
     state.transcript.append(utterance)
 
@@ -105,11 +141,12 @@ async def _handle_content(text: str, ts) -> None:
             obj.status = "answered"
             logger.info("objection answered id=%s", obj.id)
             await broadcast({"type": "objection_update", "id": obj.id, "status": "answered"})
+            mirror.upsert_objection(state.slug, objection_to_dict(obj))
 
     state.utterances_since_interrupt += 1
 
     writer.submit_utterance(state, utterance, broadcast)
-    await critic.handle_content_utterance(state, utterance, broadcast)
+    await critic.handle_content_utterance(state, utterance, broadcast, on_result=on_result)
 
 
 async def _handle_control(data: dict) -> None:
@@ -124,6 +161,9 @@ async def _handle_control(data: dict) -> None:
         await _handle_dismiss(data.get("objection_id"))
     elif action == "finish":
         await _handle_finish()
+    elif action == "share":
+        logger.info("control action=share")
+        await _handle_share()
     elif action == "set_config":
         key = data.get("key")
         value = data.get("value")
@@ -137,54 +177,157 @@ async def _handle_control(data: dict) -> None:
         logger.info("unknown control action=%r ignored", action)
 
 
-async def _handle_dismiss(objection_id: str | None = None) -> None:
+async def _handle_dismiss(objection_id: Optional[str] = None) -> Optional[str]:
+    """Dismiss `objection_id`, or (if None) the latest spoken objection.
+
+    Returns the dismissed objection's id, or None if nothing matched --
+    lets the MCP draft_ignore_objection tool report success/failure without
+    re-deriving "which objection did that dismiss".
+    """
     if objection_id:
         for obj in state.objections:
             if obj.id == objection_id:
                 obj.status = "dismissed"
                 logger.info("dismiss objection id=%s", objection_id)
                 await broadcast({"type": "objection_update", "id": obj.id, "status": "dismissed"})
-                return
+                mirror.upsert_objection(state.slug, objection_to_dict(obj))
+                return obj.id
         logger.info("dismiss failed: unknown objection id=%r", objection_id)
-        return
+        return None
     for obj in reversed(state.objections):
         if obj.status == "spoken":
             obj.status = "dismissed"
             logger.info("dismiss latest spoken objection id=%s", obj.id)
             await broadcast({"type": "objection_update", "id": obj.id, "status": "dismissed"})
-            return
+            mirror.upsert_objection(state.slug, objection_to_dict(obj))
+            return obj.id
     logger.info("dismiss ignored: no spoken objection")
+    return None
 
 
-async def _handle_readback() -> None:
-    if not state.block_order:
+async def _handle_readback() -> Optional[str]:
+    text = get_last_block_text(state)
+    if text is None:
         logger.info("readback skipped: no blocks yet")
-        return
-    last_id = state.block_order[-1]
-    text = state.blocks[last_id]
+        return None
     readback_id = state.next_readback_id()
-    audio_url = await tts.synthesize(readback_id, text)
-    logger.info("readback id=%s block=%s audio=%s", readback_id, last_id, bool(audio_url))
+    audio_url = None
+    if config.runtime_config["BROWSER_TTS"]:
+        audio_url = await tts.synthesize(readback_id, text)
+    else:
+        logger.info("readback id=%s audio skipped: BROWSER_TTS=0", readback_id)
+    logger.info("readback id=%s audio=%s", readback_id, bool(audio_url))
     await broadcast({"type": "readback", "audio_url": audio_url, "text": text})
+    return text
 
 
-async def _handle_export() -> None:
+async def _handle_export() -> str:
     markdown = render_markdown(state)
     logger.info("export markdown_len=%d", len(markdown))
     await broadcast({"type": "final_doc", "markdown": markdown})
+    return markdown
 
 
-async def _handle_finish() -> None:
+async def _handle_finish() -> str:
     logger.info("finish: starting polish pass")
     markdown = await writer.run_polish(state)
     logger.info("finish: final_doc markdown_len=%d", len(markdown))
     await broadcast({"type": "final_doc", "markdown": markdown})
+    mirror.finish(state.slug, markdown)
+    return markdown
 
 
-async def _handle_reset() -> None:
+async def _handle_share() -> str:
+    url = f"{config.AUDIENCE_BASE_URL}{state.slug}"
+    logger.info("share url=%s", url)
+    await broadcast({"type": "share", "url": url})
+    return url
+
+
+async def _handle_reset() -> str:
+    old_slug = state.slug
     reset_state(state)
-    logger.info("reset: session cleared")
+    logger.info("reset: session cleared old_slug=%s new_slug=%s", old_slug, state.slug)
     await broadcast({"type": "reset"})
+    mirror.close_and_rotate(old_slug)
+    mirror.ensure(state.slug)
+    return state.slug
+
+
+# --- MCP (SPEC.md §14.A) --------------------------------------------------
+# draft_add's own pipeline entry: router-defensive (content path only, even
+# if the text would parse as a command -- the sibling tools ARE the command
+# surface), then the exact same _handle_content() the WS path uses, waiting
+# up to MCP_OBJECTION_WAIT_S for this utterance's own critic verdict via the
+# on_result hook. Never a second critic call path.
+
+async def _mcp_handle_add(text: str) -> Optional[Objection]:
+    text = (text or "").strip()
+    if not text:
+        logger.info("mcp draft_add: ignored empty text")
+        return None
+
+    result = router.route(text)
+    if result.kind != "content":
+        logger.info(
+            "mcp draft_add: router classified %r as %s, forcing content path anyway",
+            text,
+            result.kind,
+        )
+
+    ts = time.time()
+    event = asyncio.Event()
+    box: list[Optional[Objection]] = [None]
+
+    async def on_result(obj: Optional[Objection]) -> None:
+        box[0] = obj
+        event.set()
+
+    await _handle_content(text, ts, on_result=on_result)
+    try:
+        await asyncio.wait_for(event.wait(), timeout=config.MCP_OBJECTION_WAIT_S)
+    except asyncio.TimeoutError:
+        logger.info(
+            "mcp draft_add: objection wait timed out after %.1fs (may still arrive as pending_objection later)",
+            config.MCP_OBJECTION_WAIT_S,
+        )
+    return box[0]
+
+
+mcp_deps = MCPDeps(
+    state=state,
+    broadcast=broadcast,
+    hello_message=_hello_message,
+    handle_add=_mcp_handle_add,
+    handle_finish=_handle_finish,
+    handle_readback=_handle_readback,
+    handle_dismiss=_handle_dismiss,
+    handle_reset=_handle_reset,
+    handle_export=_handle_export,
+    handle_share=_handle_share,
+    snapshot=lambda: session_snapshot(state),
+)
+mcp = build_mcp_server(mcp_deps)
+
+# streamable_http_path="/" (not the default "/mcp") because this whole
+# Starlette app is mounted AT "/mcp" below -- otherwise routes would land on
+# /mcp/mcp. json_response + stateless_http keep this a plain request/response
+# endpoint (no SSE session stream) since VoiceOS is a simple HTTP MCP client.
+# Default host="127.0.0.1" is fine -- localhost only, same as VoiceOS itself.
+mcp_app = mcp.streamable_http_app(streamable_http_path="/", json_response=True, stateless_http=True)
+
+
+@contextlib.asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    # mcp.session_manager raises RuntimeError until streamable_http_app() has
+    # been called (already done above) -- this is the one place its task
+    # group is allowed to start (SPEC.md §14.A).
+    async with mcp.session_manager.run():
+        mirror.ensure(state.slug)
+        yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 # --- WebSocket endpoint --------------------------------------------------
@@ -244,10 +387,67 @@ async def replay_stop() -> JSONResponse:
     return JSONResponse({"ok": ok, "message": message}, status_code=200 if ok else 409)
 
 
+# --- State + RPC (SPEC.md §14.A) ------------------------------------------
+# Thin REST surface backing scripted testing and a possible demo-day stdio
+# proxy (not built now).
+
+@app.get("/state")
+async def get_state() -> JSONResponse:
+    return JSONResponse(session_snapshot(state))
+
+
+@app.post("/rpc")
+async def rpc(request: Request) -> JSONResponse:
+    try:
+        data = await request.json()
+    except Exception:
+        logger.info("rpc: invalid json body")
+        return JSONResponse({"ok": False, "error": "invalid json body"}, status_code=400)
+    if not isinstance(data, dict):
+        logger.info("rpc: body is not a JSON object")
+        return JSONResponse({"ok": False, "error": "body must be a JSON object"}, status_code=400)
+    await handle_client_message(data)
+    return JSONResponse({"ok": True})
+
+
+# --- MCP mount -------------------------------------------------------------
+# Must be registered before the static catch-all (next section) for the same
+# reason /ws, /tts, /replay, /state, /rpc are: Mount("/") prefix-matches
+# every path once it's registered.
+#
+# This installed Starlette (1.6.0) compiles a Mount's match pattern as
+# `path + "/{path:path}"` -- there is no optional-suffix case like older
+# Starlette versions had. That means Mount("/mcp", mcp_app) only ever
+# matches "/mcp/..." (at least a trailing slash); a bare "POST /mcp" (no
+# trailing slash -- the natural way to write this URL, and what an MCP
+# client given "http://host:8000/mcp" will send) does not match the Mount
+# at all and falls through to the static catch-all below, which 405s any
+# non-GET method. Confirmed with curl: POST /mcp/ -> 200, POST /mcp -> 405.
+# _BareMCPPassthrough registers the exact literal path "/mcp" as an extra
+# Route (Route matches its path exactly, no forced suffix) and rewrites the
+# scope to "/" before handing it to the SAME mcp_app -- the same rewrite
+# Mount itself does for a matching "/mcp/..." request.
+class _BareMCPPassthrough:
+    def __init__(self, asgi_app) -> None:
+        self._asgi_app = asgi_app
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] in ("http", "websocket"):
+            scope = {**scope, "path": "/", "root_path": scope.get("root_path", "") + "/mcp"}
+        await self._asgi_app(scope, receive, send)
+
+
+app.router.routes.append(
+    Route("/mcp", _BareMCPPassthrough(mcp_app), methods=["GET", "POST", "DELETE"])
+)
+app.mount("/mcp", mcp_app)
+logger.info("mcp mounted at /mcp (streamable-http, json_response, stateless; bare + trailing-slash both handled)")
+
+
 # --- Static frontend / root hint -----------------------------------------
 # Must be registered LAST: a Mount("/") prefix-matches every path, so any
 # route added after it would never be reached. Registering it last means
-# /ws, /tts/*, /replay/* above are always matched first.
+# /ws, /tts/*, /replay/*, /state, /rpc, /mcp above are always matched first.
 
 WEB_DIST = REPO_ROOT / "web" / "dist"
 

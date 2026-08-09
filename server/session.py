@@ -1,11 +1,33 @@
 """SessionState + block-patch application (SPEC.md §5 SessionState, §13.E ids).
 
-Single session, single process, in-memory only -- no DB, no persistence.
+Single session, single process, in-memory only -- no DB, no persistence
+(beyond the optional Convex mirror, which is out of this module's concern).
 """
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass, field
 from typing import Optional
+
+from server import config
+
+# Slug (SPEC.md §14.B): two short lowercase words + 2 digits, e.g.
+# "amber-fox-42". Minted at session creation and on every reset. Inline
+# wordlist -- no external resource, deliberately small/hackathon-sized.
+_SLUG_WORDS = [
+    "amber", "birch", "cedar", "coral", "delta", "ember", "fable", "flint",
+    "grove", "haze", "indigo", "ivory", "jade", "koa", "lumen", "maple",
+    "nova", "onyx", "opal", "pearl", "quartz", "raven", "reed", "sable",
+    "slate", "storm", "teal", "umber", "violet", "willow", "zephyr", "fox",
+    "wolf", "hawk", "owl", "bear", "lynx", "crow", "deer", "otter", "heron",
+    "falcon", "wren", "finch", "moth", "elk", "seal", "pine", "moss",
+]
+
+
+def _mint_slug() -> str:
+    a, b = random.sample(_SLUG_WORDS, 2)
+    n = random.randint(10, 99)
+    return f"{a}-{b}-{n}"
 
 
 @dataclass
@@ -15,6 +37,12 @@ class Objection:
     message: str
     refs: list[str]
     status: str  # "spoken" | "dismissed" | "answered"
+
+
+def objection_to_dict(o: Objection) -> dict:
+    """Plain-dict shape shared by session.snapshot(), the Convex mirror, and
+    the MCP layer's `pending_objection` field -- one place defines it."""
+    return {"id": o.id, "kind": o.kind, "message": o.message, "refs": o.refs, "status": o.status}
 
 
 @dataclass
@@ -28,6 +56,11 @@ class SessionState:
     utterances_since_interrupt: int = 0
     writer_running: bool = False
     pending_utterances: list[dict] = field(default_factory=list)
+
+    # Share-flow capability token (SPEC.md §14.B): minted here and on every
+    # reset. Included in `hello` and GET /state; audience URLs are
+    # AUDIENCE_BASE_URL + slug.
+    slug: str = field(default_factory=_mint_slug)
 
     # Bumped on reset. In-flight writer/critic tasks capture this at the
     # start of a pass and check it again before broadcasting, so a stale
@@ -131,6 +164,31 @@ def doc_update_blocks(state: SessionState, touched: dict[str, str]) -> list[dict
     ]
 
 
+def get_last_block_text(state: SessionState) -> Optional[str]:
+    """The most recent paragraph's text, or None if no blocks exist yet.
+
+    Shared by the WS "draft, read that back" path and the MCP
+    draft_read_back tool -- one place decides what "the last block" means.
+    """
+    if not state.block_order:
+        return None
+    return state.blocks[state.block_order[-1]]
+
+
+def snapshot(state: SessionState) -> dict:
+    """Document snapshot (SPEC.md §14.A): {title, blocks:[{id,text}],
+    objections:[...], slug, has_openai_key}. Backs GET /state and the MCP
+    draft_get_document tool.
+    """
+    return {
+        "title": state.title,
+        "blocks": [{"id": bid, "text": state.blocks[bid]} for bid in state.block_order],
+        "objections": [objection_to_dict(o) for o in state.objections],
+        "slug": state.slug,
+        "has_openai_key": config.has_openai_key(),
+    }
+
+
 def render_markdown(state: SessionState) -> str:
     """Plain (unpolished) markdown rendering of the current state.
 
@@ -168,3 +226,4 @@ def reset_state(state: SessionState) -> None:
     state._block_seq = 0
     state._objection_seq = 0
     state._readback_seq = 0
+    state.slug = _mint_slug()

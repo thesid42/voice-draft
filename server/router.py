@@ -23,7 +23,7 @@ def normalize(text: str) -> str:
 
 @dataclass
 class RouteResult:
-    kind: str  # "content" | "finish" | "readback" | "dismiss" | "export" | "reset"
+    kind: str  # "content" | "finish" | "readback" | "dismiss" | "export" | "share" | "reset"
     raw_text: str
     normalized: str
 
@@ -43,6 +43,8 @@ def route(text: str) -> RouteResult:
             return RouteResult("dismiss", text, normalized)
         if "export" in rest:
             return RouteResult("export", text, normalized)
+        if "share" in rest:
+            return RouteResult("share", text, normalized)
         if "new" in rest or "start over" in rest:
             return RouteResult("reset", text, normalized)
         # unrecognized after "draft"/"draught" -> fail open to content

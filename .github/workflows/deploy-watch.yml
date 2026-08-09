@@ -1,0 +1,68 @@
+name: Deploy watch page to GitHub Pages
+
+# Builds the Vite multi-entry web/ bundle (main app + the Convex-backed
+# audience page, watch.html -> AudienceView.jsx, SPEC.md §14.B) and
+# publishes web/dist to GitHub Pages. Requires the repo's Pages source
+# (Settings > Pages > Build and deployment) to be set to "GitHub Actions".
+#
+# VITE_CONVEX_URL is read from a repo secret and may legitimately be unset
+# (e.g. before the user's first `npx convex dev`) — the build still
+# succeeds; the deployed audience page just renders its "not configured"
+# state until the secret is added and this workflow re-runs.
+
+on:
+  push:
+    branches: [mcp-convex, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Build
+        working-directory: web
+        run: npm run build
+        env:
+          VITE_CONVEX_URL: ${{ secrets.VITE_CONVEX_URL }}
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v6
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

@@ -51,6 +51,11 @@ def _str_env(name: str, default: str) -> str:
     return raw
 
 
+def _env_present(name: str) -> bool:
+    raw = os.environ.get(name)
+    return raw is not None and raw.strip() != ""
+
+
 # --- Static config (not runtime-mutable) ---------------------------------
 
 OPENAI_API_KEY: str = os.environ.get("OPENAI_API_KEY", "") or ""
@@ -64,6 +69,18 @@ TTS_VOICE: str = _str_env("TTS_VOICE", "onyx")
 # (not part of the runtime-mutable/hello set).
 DUP_JACCARD_THRESHOLD: float = 0.6
 
+# MCP objection delivery wait (SPEC.md §14.A): draft_add waits this long for
+# ITS OWN utterance's critic verdict before returning without one. A verdict
+# that arrives later still fires normally (broadcast + mirrored) and surfaces
+# as `pending_objection` on a later tool result.
+MCP_OBJECTION_WAIT_S: float = _float_env("MCP_OBJECTION_WAIT_S", 2.0)
+
+# Convex live-share mirror (SPEC.md §14.B) and audience share links. Both
+# optional -- server/mirror.py is a silent no-op without CONVEX_URL, and an
+# empty AUDIENCE_BASE_URL still works (Convex/Pages just aren't live yet).
+CONVEX_URL: str = _str_env("CONVEX_URL", "")
+AUDIENCE_BASE_URL: str = _str_env("AUDIENCE_BASE_URL", "http://localhost:5173/watch.html#")
+
 # --- Runtime-mutable tunables (exposed via hello / set_config) -----------
 # Types matter here: CONF_FLOOR is a float, the rest are ints. Keep it that
 # way so `hello` JSON matches SPEC.md §13.A byte-for-byte (e.g. 45 not 45.0).
@@ -74,7 +91,21 @@ runtime_config: dict[str, float | int] = {
     "GRACE_MS": _int_env("GRACE_MS", 2500),
     "PAUSE_MS": _int_env("PAUSE_MS", 700),
     "MIN_UTTERANCES_BETWEEN": _int_env("MIN_UTTERANCES_BETWEEN", 2),
+    # BROWSER_TTS (SPEC.md §14.A): 1 = server synthesizes TTS for interrupts
+    # and readbacks as usual; 0 = skip synthesis, audio_url always null (the
+    # MCP layer auto-flips this once, unless explicitly set -- see
+    # _EXPLICIT below).
+    "BROWSER_TTS": _int_env("BROWSER_TTS", 1),
 }
+
+# Keys the user has explicitly chosen (env var present at startup, or a live
+# set_config control) as opposed to just sitting at their code default.
+# Consumed today only for BROWSER_TTS (SPEC.md §14.A: the MCP layer's
+# first-tool-call auto-flip to 0 must not clobber a value the user picked on
+# purpose) but tracked generically since set_config can touch any key.
+_EXPLICIT: set[str] = set()
+if _env_present("BROWSER_TTS"):
+    _EXPLICIT.add("BROWSER_TTS")
 
 
 def has_openai_key() -> bool:
@@ -103,7 +134,14 @@ def set_config(key: str, value) -> bool:
             runtime_config[key] = int(value)
     except (TypeError, ValueError):
         return False
+    _EXPLICIT.add(key)
     return True
+
+
+def is_explicit(key: str) -> bool:
+    """True if `key` was set by the user (env var at startup, or a live
+    set_config control) rather than left at its code default."""
+    return key in _EXPLICIT
 
 
 # --- Lazy AsyncOpenAI client ------------------------------------------------
