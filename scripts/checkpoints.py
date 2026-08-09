@@ -164,10 +164,14 @@ async def scenario_critic(c):
     # benign
     n = len(c.msgs)
     await c.say("draft, new document", gap=1.5)
-    for s in ["We are planning the fall team offsite for the second week of October.",
-              "The venue is the lakeside lodge we used in twenty twenty four, which fit all twelve of us comfortably.",
-              "Day one is a working session on the roadmap, day two is fully unstructured.",
-              "Casey owns the budget and has already confirmed it covers travel for everyone."]:
+    # Canonical benign script — kept identical to the DevPanel's BENIGN_SCRIPT
+    # (web/src/components/DevPanel.jsx) so this suite exercises exactly what
+    # the demo exercises.
+    for s in ["I want to plan our team offsite for the second week of October.",
+              "We should keep it to two full days so people aren't away from their families too long.",
+              "Sarah suggested the lake house venue we used last year, since everyone who went said they'd want to go back.",
+              "Let's budget around three hundred dollars per person for travel and lodging combined.",
+              "I'll send a scheduling poll by Friday so we can lock the dates."]:
         await c.say(s, gap=2.5)
     await asyncio.sleep(12)
     check("critic: benign script stays silent", len(c.all_of("interrupt", since=n)) == 0, [m.get("message") for m in c.all_of("interrupt", since=n)])

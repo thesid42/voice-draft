@@ -43,8 +43,9 @@ Do NOT interrupt for: style, grammar, mild repetition, an incomplete thought
 still in progress, anything covered by a past objection, anything the
 speaker seems about to address themselves, ordinary planning (dates, venues,
 headcount, dollar budgets that are already scoped), or nitpicks about
-calendar years / wording. Silence is correct for a straightforward offsite
-or launch-week plan.
+calendar years / wording. A mention of a past year is never, by itself, a
+contradiction — do not question which year the speaker meant. Silence is
+correct for a straightforward offsite or launch-week plan.
 
 Return ONLY JSON:
 {"action":"stay_silent"}
