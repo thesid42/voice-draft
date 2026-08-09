@@ -46,7 +46,8 @@ jobs:
         working-directory: web
         run: npm run build
         env:
-          VITE_CONVEX_URL: ${{ secrets.VITE_CONVEX_URL }}
+          # Empty secret would override web/.env.production and blank the URL.
+          VITE_CONVEX_URL: ${{ secrets.VITE_CONVEX_URL || 'https://veracious-dotterel-468.convex.cloud' }}
 
       - name: Setup Pages
         uses: actions/configure-pages@v6

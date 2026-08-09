@@ -10,7 +10,8 @@ import './index.css'
 // `npx convex dev`) — constructing ConvexReactClient with an empty/invalid
 // URL throws, so skip it entirely and let AudienceView render its
 // "not configured" state instead.
-const CONVEX_URL = import.meta.env.VITE_CONVEX_URL || ''
+const CONVEX_URL =
+  import.meta.env.VITE_CONVEX_URL || 'https://veracious-dotterel-468.convex.cloud'
 const convexClient = CONVEX_URL ? new ConvexReactClient(CONVEX_URL) : null
 
 function Root() {
