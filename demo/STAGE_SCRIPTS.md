@@ -64,7 +64,7 @@ verbatim**; paraphrase freely everywhere else.
 >
 > **4.** If something needs a decision, it becomes a doc first — writing forces the thinking.
 >
-> **5. The average engineer here loses twenty hours a week to meetings.** *(TRAP A — verbatim, then stop)*
+> **5. The average engineer here loses twenty hours a week to meetings. Twenty hours, every single week.** *(TRAP A — verbatim, then stop)*
 
 🔴 **CRITIC**: *"Twenty hours a week according to what measurement?"*
 

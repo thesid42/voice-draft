@@ -166,6 +166,20 @@ async def _run(
 
     message = data.get("message", "") or ""
     refs = data.get("refs", []) or []
+    # Refs sanitation: the model sometimes returns [] or ids that don't exist,
+    # which glows nothing (or the wrong block) in the UI. Keep only real block
+    # ids; if none survive, anchor to the newest block — the trigger
+    # utterance's content is almost always the last thing written.
+    refs = [r for r in refs if r in state.blocks]
+    if not refs and state.block_order:
+        refs = [state.block_order[-1]]
+    # A contradiction has two sides; the model often lists only the earlier
+    # one. The new conflicting statement is almost always the newest block —
+    # include it so BOTH sides glow.
+    if kind == "contradiction" and len(refs) == 1 and state.block_order:
+        newest = state.block_order[-1]
+        if newest not in refs:
+            refs.append(newest)
     objection_id = state.next_objection_id()
 
     # Claim cooldown + dedup BEFORE TTS. Two critic tasks often finish

@@ -66,10 +66,12 @@ def _build_user_message(state: SessionState, batch: list[dict]) -> str:
     lines.append("")
     lines.append(
         "EDITOR OBJECTIONS (status spoken/answered = they just replied, or the "
-        "latest new utterances are the reply). Patch the referenced blocks. "
-        "If the reply is 'I don't know' / skip / not sure: REMOVE or hedge the "
-        "unsupported claim in those refs — do not add a block that says they "
-        "don't know."
+        "latest new utterances are the reply). Patch per the objection rules: "
+        "a substantive reply RECONCILES every block that carries the issue "
+        "(including blocks not listed in refs) — never delete a block to "
+        "resolve an answered objection. Removal/hedging is only for an "
+        "explicit retraction or an 'I don't know'/skip reply, and only for "
+        "the unsupported bit itself."
     )
     if state.objections:
         for o in state.objections:

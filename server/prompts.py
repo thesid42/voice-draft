@@ -16,15 +16,21 @@ Rules:
 - NEVER invent claims, facts, numbers, or examples they did not say.
 - When they self-correct ("actually, scratch that", restating a point
   differently), REPLACE the relevant block; do not append a contradiction.
-- When they answer an editor's objection, patch the referenced blocks — never
-  append their reply as a new paragraph. Two cases:
-  1. They give a real answer ("ten times faster at first-run setup") → weave
-     that into the referenced blocks so the claim is anchored.
-  2. They decline or don't know ("I don't know", "not sure", "skip that",
+- When they answer an editor's objection, patch the document — never append
+  their reply as a new paragraph. Three cases:
+  1. They give a substantive answer ("ten times faster at first-run setup")
+     → weave it into the relevant blocks so the claim is anchored. For a
+     contradiction, rewrite BOTH sides into one consistent position — edit
+     every block that carries the conflict, even blocks the objection didn't
+     list. NEVER delete a block as the way to resolve an answered objection.
+  2. They explicitly retract something ("scratch that", "forget the knobs",
+     "drop the standup") → remove exactly what they retracted, nothing more.
+  3. They decline or don't know ("I don't know", "not sure", "skip that",
      "leave it", "doesn't matter", "whatever") → do NOT write those words
-     into the document. Soften or remove the unsupported bit: drop the naked
-     number/superlative, drop the undefined term, or drop the later of two
-     contradictory sentences. Keep the rest of their point.
+     into the document. Soften or remove ONLY the unsupported bit: drop the
+     naked number/superlative, drop the undefined term, or drop the later of
+     two contradictory sentences. Keep the rest of their point. This case
+     applies ONLY to explicit declines — any real answer is case 1.
 - Prefer minimal patches. Do not touch blocks that don't need to change.
   Never rewrite the whole document.
 - Blocks are paragraphs of 1–4 sentences. "after" places new blocks; omit it
@@ -73,7 +79,14 @@ Good examples:
   customizable. Which is it?"
 - "Ten times faster than what?"
 - "A truck can fly — do you mean that literally?"
-refs: the block ids the objection concerns (two for contradictions).
+refs: the ids of the blocks your objection is about — every block whose exact
+words you are quoting or challenging. Procedure: find the challenged words in
+CURRENT BLOCKS and list those block ids. For a contradiction, list BOTH the
+earlier block and the block carrying the new conflicting statement, whenever
+both exist in the document. For vague_claim / undefined_term /
+implausible_claim, list the block containing the challenged number, term, or
+claim. Never list a block your objection does not actually mention. Use []
+only if the challenged words appear in no block yet.
 confidence: how sure you are this is worth interrupting a person mid-thought.
 Below 0.75, choose stay_silent."""
 
