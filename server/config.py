@@ -10,12 +10,15 @@ server boots cleanly with no OPENAI_API_KEY set (SPEC.md §13.D).
 """
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
+
+logger = logging.getLogger("draft.config")
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -59,6 +62,8 @@ def _env_present(name: str) -> bool:
 # --- Static config (not runtime-mutable) ---------------------------------
 
 OPENAI_API_KEY: str = os.environ.get("OPENAI_API_KEY", "") or ""
+# Optional OpenAI-compatible base URL (e.g. OpenRouter). Empty = api.openai.com.
+OPENAI_BASE_URL: str = _str_env("OPENAI_BASE_URL", "")
 MODEL_WRITER: str = _str_env("MODEL_WRITER", "gpt-4o")
 MODEL_CRITIC: str = _str_env("MODEL_CRITIC", "gpt-4o")
 TTS_MODEL: str = _str_env("TTS_MODEL", "tts-1")
@@ -159,5 +164,14 @@ def get_openai_client() -> Optional[AsyncOpenAI]:
     if not OPENAI_API_KEY:
         return None
     if _client is None:
-        _client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+        kwargs: dict = {"api_key": OPENAI_API_KEY}
+        if OPENAI_BASE_URL:
+            kwargs["base_url"] = OPENAI_BASE_URL
+        _client = AsyncOpenAI(**kwargs)
+        logger.info(
+            "openai client ready base_url=%s writer=%s critic=%s",
+            OPENAI_BASE_URL or "https://api.openai.com/v1",
+            MODEL_WRITER,
+            MODEL_CRITIC,
+        )
     return _client
