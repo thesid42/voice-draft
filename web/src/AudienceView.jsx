@@ -17,6 +17,7 @@ const KIND_LABELS = {
   vague_claim: 'Vague claim',
   undefined_term: 'Undefined term',
   lost_thread: 'Lost thread',
+  implausible_claim: 'Implausible claim',
 }
 
 function useSlug() {

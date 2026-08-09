@@ -36,6 +36,11 @@ const LOST_THREAD_SCRIPT = [
   'Anyway, the weather has been wild lately. Apparently it might even snow this weekend, in October.',
 ].join(' ')
 
+const IMPLAUSIBLE_SCRIPT = [
+  'I want a short product blurb about our new delivery fleet.',
+  'The headline is simple: a truck can fly.',
+].join(' ')
+
 function Row({ label, children }) {
   return (
     <div className="mb-2.5 flex items-center justify-between gap-3">
@@ -322,6 +327,15 @@ export default function DevPanel({
             disabled={simBusy}
           >
             Lost-thread script
+          </Button>
+          <Button
+            onClick={() => {
+              setSimText(IMPLAUSIBLE_SCRIPT)
+              runScript(IMPLAUSIBLE_SCRIPT)
+            }}
+            disabled={simBusy}
+          >
+            Implausible-claim script
           </Button>
         </div>
       </section>

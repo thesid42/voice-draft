@@ -6,6 +6,7 @@ const KIND_LABELS = {
   vague_claim: 'Vague claim',
   undefined_term: 'Undefined term',
   lost_thread: 'Lost thread',
+  implausible_claim: 'Implausible claim',
 }
 
 const KIND_WHY = {
@@ -13,6 +14,7 @@ const KIND_WHY = {
   vague_claim: 'This number or comparison has no anchor.',
   undefined_term: 'This term is doing real work and was never explained.',
   lost_thread: 'The last few lines drifted off the point of the document.',
+  implausible_claim: 'This is presented as fact but cannot be true.',
 }
 
 export default function InterruptBanner({

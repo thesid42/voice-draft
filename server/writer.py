@@ -64,7 +64,13 @@ def _build_user_message(state: SessionState, batch: list[dict]) -> str:
         lines.append("(none yet)")
 
     lines.append("")
-    lines.append("EDITOR OBJECTIONS (if a new utterance answers one, integrate the answer into its referenced blocks):")
+    lines.append(
+        "EDITOR OBJECTIONS (status spoken/answered = they just replied, or the "
+        "latest new utterances are the reply). Patch the referenced blocks. "
+        "If the reply is 'I don't know' / skip / not sure: REMOVE or hedge the "
+        "unsupported claim in those refs — do not add a block that says they "
+        "don't know."
+    )
     if state.objections:
         for o in state.objections:
             lines.append(f"{o.id} [{o.kind}] status={o.status} refs={o.refs}: {o.message}")

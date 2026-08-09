@@ -11,7 +11,7 @@
 1. User opens the app. A capture field has focus. They speak; VoiceOS types their words into the field.
 2. The app cuts the incoming text into utterances and sends them to the server.
 3. A Writer model continuously turns the transcript into a document (title + paragraph blocks) rendered live. Revised blocks flash. The page is never blank after ~2 utterances.
-4. A Critic model evaluates after every utterance. Default: silence. When it catches a contradiction / unanchored claim / undefined term / lost thread, it interrupts: an orb pulses, a one-sentence objection plays as audio (our own TTS), and the referenced blocks glow.
+4. A Critic model evaluates after every utterance. Default: silence. When it catches a contradiction / unanchored claim / undefined term / lost thread / implausible claim, it interrupts: an orb pulses, a one-sentence objection plays as audio (our own TTS), and the referenced blocks glow.
 5. The user answers by speaking — the answer is just the next utterance; the Writer weaves it in and the doc visibly improves. Or they say "Draft, ignore that."
 6. Voice commands (prefix "Draft, …"): wrap it up / read that back / ignore that / export / new document. The entire app is operable with zero keyboard/mouse.
 7. "Draft, wrap it up" → one final full-document polish pass → clean final view → export as Markdown.
@@ -279,6 +279,12 @@ Your default is SILENCE. Interrupt only for:
    explained.
 4. lost_thread — the last several utterances have no clear connection to the
    stated point of the document.
+5. implausible_claim — the latest utterance states something that is
+   obviously false or physically impossible as a real-world fact
+   ("a truck can fly", "water is dry", "the sun is ice-cold"). Challenge it
+   directly. Do NOT use this for unverifiable product boasts, opinions,
+   future plans, metaphors, or fiction the speaker is clearly writing as
+   fiction — only for claims presented as literal fact that cannot be true.
 
 Do NOT interrupt for: style, grammar, mild repetition, an incomplete thought
 still in progress, anything covered by a past objection, or anything the
@@ -287,7 +293,7 @@ speaker seems about to address themselves.
 Return ONLY JSON:
 {"action":"stay_silent"}
 or
-{"action":"interrupt","kind":"contradiction|vague_claim|undefined_term|lost_thread",
+{"action":"interrupt","kind":"contradiction|vague_claim|undefined_term|lost_thread|implausible_claim",
  "message":"...","refs":["b2","b7"],"confidence":0.0-1.0}
 
 message: ONE spoken sentence, conversational and direct, quoting at most six
@@ -296,6 +302,7 @@ Good examples:
 - "Earlier you said users hate configuring things — now everything's
   customizable. Which is it?"
 - "Ten times faster than what?"
+- "A truck can fly — do you mean that literally?"
 refs: the block ids the objection concerns (two for contradictions).
 confidence: how sure you are this is worth interrupting a person mid-thought.
 Below 0.75, choose stay_silent.

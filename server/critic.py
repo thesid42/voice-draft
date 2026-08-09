@@ -52,6 +52,13 @@ def _build_user_message(state: SessionState, utterance: dict) -> str:
         lines.append("(none)")
 
     lines.append("")
+    enabled = config.enabled_critic_kinds()
+    if enabled:
+        lines.append(f"ENABLED INTERRUPT KINDS (stay silent for any other kind): {', '.join(enabled)}")
+    else:
+        lines.append("ENABLED INTERRUPT KINDS: none — you MUST stay_silent.")
+
+    lines.append("")
     lines.append(f"LATEST UTTERANCE: {utterance.get('text')}")
     return "\n".join(lines)
 
@@ -85,6 +92,11 @@ async def _run(
         except Exception:  # noqa: BLE001 - a caller's callback bug must not
             # blow up the critic task.
             logger.exception("critic on_result callback raised")
+
+    if not config.enabled_critic_kinds():
+        logger.info("critic skipped: all interrupt kinds disabled")
+        await _finish(None)
+        return
 
     if not config.has_openai_key():
         logger.info("critic skipped: no OPENAI_API_KEY")
@@ -132,6 +144,11 @@ async def _run(
     confidence = data.get("confidence", 0.0)
     kind = data.get("kind")
     logger.info("critic verdict=interrupt kind=%s confidence=%s", kind, confidence)
+
+    if not config.critic_kind_enabled(kind):
+        logger.info("critic interrupt skipped: kind=%s disabled", kind)
+        await _finish(None)
+        return
 
     now = time.monotonic()
     allowed, reason = gate_evaluate(

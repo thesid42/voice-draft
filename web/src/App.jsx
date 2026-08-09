@@ -10,6 +10,7 @@ import Orb from './components/Orb.jsx'
 import InterruptBanner from './components/InterruptBanner.jsx'
 import ShareOverlay from './components/ShareOverlay.jsx'
 import DevPanel from './components/DevPanel.jsx'
+import SettingsPanel from './components/SettingsPanel.jsx'
 
 const DEFAULT_CONFIG = {
   CONF_FLOOR: 0.75,
@@ -21,6 +22,11 @@ const DEFAULT_CONFIG = {
   // §14.A: server default is 1 (truthy); null here just means "not yet
   // heard from the server" — DevPanel treats null/undefined as truthy too.
   BROWSER_TTS: null,
+  CRITIC_CONTRADICTION: null,
+  CRITIC_VAGUE_CLAIM: null,
+  CRITIC_UNDEFINED_TERM: null,
+  CRITIC_LOST_THREAD: null,
+  CRITIC_IMPLAUSIBLE_CLAIM: null,
 }
 
 // Banner stays up while the objection is spoken so the user can read it
@@ -240,6 +246,11 @@ export default function App() {
             // second observer tab (and a page reload) reflect the real
             // server value instead of always showing DevPanel's fallback.
             BROWSER_TTS: cfg.BROWSER_TTS ?? configRef.current.BROWSER_TTS,
+            CRITIC_CONTRADICTION: cfg.CRITIC_CONTRADICTION ?? configRef.current.CRITIC_CONTRADICTION,
+            CRITIC_VAGUE_CLAIM: cfg.CRITIC_VAGUE_CLAIM ?? configRef.current.CRITIC_VAGUE_CLAIM,
+            CRITIC_UNDEFINED_TERM: cfg.CRITIC_UNDEFINED_TERM ?? configRef.current.CRITIC_UNDEFINED_TERM,
+            CRITIC_LOST_THREAD: cfg.CRITIC_LOST_THREAD ?? configRef.current.CRITIC_LOST_THREAD,
+            CRITIC_IMPLAUSIBLE_CLAIM: cfg.CRITIC_IMPLAUSIBLE_CLAIM ?? configRef.current.CRITIC_IMPLAUSIBLE_CLAIM,
           }
           configRef.current = merged
           setConfigState(merged)
@@ -412,12 +423,16 @@ export default function App() {
 
   // ---- focus guard: CaptureField always holds focus, except DevPanel ----
   useEffect(() => {
-    function isInsideDevPanel(el) {
-      return !!(el && el.closest && el.closest('[data-devpanel-root]'))
+    function isInsideExempt(el) {
+      return !!(
+        el &&
+        el.closest &&
+        (el.closest('[data-devpanel-root]') || el.closest('[data-settings-root]'))
+      )
     }
     function refocus() {
       const active = document.activeElement
-      if (isInsideDevPanel(active)) return
+      if (isInsideExempt(active)) return
       const field = captureFieldRef.current
       if (field && active !== field) field.focus({ preventScroll: true })
     }
@@ -582,6 +597,7 @@ export default function App() {
         leftInset={isDev ? DEV_PANEL_WIDTH : 0}
       />
       <ConnDot status={connStatus} />
+      <SettingsPanel config={config} onSetConfig={handleSetServerConfig} />
 
       <CaptureField
         textareaRef={captureFieldRef}

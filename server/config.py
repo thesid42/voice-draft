@@ -102,6 +102,22 @@ runtime_config: dict[str, float | int] = {
     # MCP layer auto-flips this once, unless explicitly set -- see
     # _EXPLICIT below).
     "BROWSER_TTS": _int_env("BROWSER_TTS", 1),
+    # Which Critic interrupt kinds may fire (1/0). User-toggled from the
+    # in-app Settings button; all on by default.
+    "CRITIC_CONTRADICTION": _int_env("CRITIC_CONTRADICTION", 1),
+    "CRITIC_VAGUE_CLAIM": _int_env("CRITIC_VAGUE_CLAIM", 1),
+    "CRITIC_UNDEFINED_TERM": _int_env("CRITIC_UNDEFINED_TERM", 1),
+    "CRITIC_LOST_THREAD": _int_env("CRITIC_LOST_THREAD", 1),
+    "CRITIC_IMPLAUSIBLE_CLAIM": _int_env("CRITIC_IMPLAUSIBLE_CLAIM", 1),
+}
+
+# Maps runtime_config keys -> critic `kind` strings (SPEC.md §5).
+CRITIC_KIND_KEYS: dict[str, str] = {
+    "CRITIC_CONTRADICTION": "contradiction",
+    "CRITIC_VAGUE_CLAIM": "vague_claim",
+    "CRITIC_UNDEFINED_TERM": "undefined_term",
+    "CRITIC_LOST_THREAD": "lost_thread",
+    "CRITIC_IMPLAUSIBLE_CLAIM": "implausible_claim",
 }
 
 # Keys the user has explicitly chosen (env var present at startup, or a live
@@ -142,6 +158,17 @@ def set_config(key: str, value) -> bool:
         return False
     _EXPLICIT.add(key)
     return True
+
+
+def enabled_critic_kinds() -> list[str]:
+    """Kinds the Critic is allowed to fire right now (empty = silence)."""
+    return [kind for key, kind in CRITIC_KIND_KEYS.items() if runtime_config.get(key, 1)]
+
+
+def critic_kind_enabled(kind: str | None) -> bool:
+    if not kind:
+        return False
+    return kind in set(enabled_critic_kinds())
 
 
 def is_explicit(key: str) -> bool:
