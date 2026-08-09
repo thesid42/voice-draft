@@ -1,0 +1,13 @@
+{
+  "events": [
+    {"delay_ms": 1500, "type": "utterance", "text": "So the thing about our product is that users absolutely hate configuring things. Nobody wants settings."},
+    {"delay_ms": 7000, "type": "utterance", "text": "The core flow has to work with zero setup, out of the box."},
+    {"delay_ms": 7000, "type": "utterance", "text": "It's honestly ten times faster than anything out there."},
+    {"delay_ms": 11500, "type": "utterance", "text": "Okay, fair — ten times faster at first-run setup specifically. You're drafting in under a minute, where the incumbents take ten just to onboard you."},
+    {"delay_ms": 11000, "type": "utterance", "text": "The onboarding is a single screen. You open it, you talk, it writes. That is the entire pitch."},
+    {"delay_ms": 12000, "type": "utterance", "text": "We keep the interface to one input and one document. Nothing else competes for your attention."},
+    {"delay_ms": 16000, "type": "utterance", "text": "And for power users we're going to let them customize every single part of the pipeline."},
+    {"delay_ms": 12000, "type": "utterance", "text": "Right — customization stays buried unless you go digging for it. The default path never shows you a single setting."},
+    {"delay_ms": 12000, "type": "utterance", "text": "Draft, wrap it up."}
+  ]
+}

@@ -1,0 +1,337 @@
+import { useRef, useState } from 'react'
+import { speakIntoField } from '../devSim.js'
+
+// DevPanel.jsx — SPEC.md §8 + §13.E. Only mounted behind ?dev=1.
+// `data-devpanel-root` marks the subtree the focus guard (App.jsx) must
+// leave alone so these inputs stay usable.
+
+const PLANTED_SCRIPT = [
+  'So the thing about our product is that users absolutely hate configuring things. Nobody wants settings.',
+  'The core flow has to work with zero setup, out of the box.',
+  "It's honestly ten times faster than anything out there.",
+  "And for power users we're going to let them customize every single part of the pipeline.",
+].join(' ')
+
+const BENIGN_SCRIPT = [
+  'I want to plan our team offsite for the second week of October.',
+  "We should keep it to two full days so people aren't away from their families too long.",
+  "Sarah suggested the lake house venue we used last year, since everyone who went said they'd want to go back.",
+  "Let's budget around three hundred dollars per person for travel and lodging combined.",
+  "I'll send a scheduling poll by Friday so we can lock the dates.",
+].join(' ')
+
+function Row({ label, children }) {
+  return (
+    <div className="mb-2.5 flex items-center justify-between gap-3">
+      <span style={{ fontFamily: 'var(--font-sans)', fontSize: '0.72rem', color: 'var(--ink-dim)' }}>{label}</span>
+      {children}
+    </div>
+  )
+}
+
+function SliderRow({ label, value, min, max, step, onChange, format }) {
+  return (
+    <div className="mb-2.5">
+      <div className="mb-1 flex items-center justify-between">
+        <span style={{ fontFamily: 'var(--font-sans)', fontSize: '0.72rem', color: 'var(--ink-dim)' }}>{label}</span>
+        <span style={{ fontFamily: 'var(--font-sans)', fontSize: '0.72rem', color: 'var(--ink)' }}>
+          {format ? format(value) : value}
+        </span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-full"
+      />
+    </div>
+  )
+}
+
+function Button({ children, onClick, disabled, tone }) {
+  const bg = tone === 'danger' ? 'rgba(201,107,79,0.15)' : 'var(--paper)'
+  const border = tone === 'danger' ? 'rgba(201,107,79,0.5)' : 'var(--paper-line)'
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        fontFamily: 'var(--font-sans)',
+        fontSize: '0.75rem',
+        color: disabled ? 'var(--ink-faint)' : 'var(--ink)',
+        background: bg,
+        border: `1px solid ${border}`,
+        borderRadius: '6px',
+        padding: '0.4rem 0.65rem',
+        opacity: disabled ? 0.5 : 1,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+      }}
+    >
+      {children}
+    </button>
+  )
+}
+
+export default function DevPanel({
+  connStatus,
+  floorState,
+  config,
+  onSetConfig,
+  duckEnabled,
+  duckThreshold,
+  onSetDuckEnabled,
+  onSetDuckThreshold,
+  micStatus, // { available: true|false|null, detail }
+  textareaRef,
+  onBargeInNow,
+  onEchoNow,
+  onFakeObjection,
+  onReplayStart,
+  onReplayStop,
+  onDownload,
+  events,
+}) {
+  const [simText, setSimText] = useState('')
+  const [simBusy, setSimBusy] = useState(false)
+  const stopFlagRef = useRef(false)
+
+  const floorIdle = floorState === 'USER_FLOOR'
+
+  async function runScript(text) {
+    const el = textareaRef.current
+    if (!el || simBusy || !text.trim()) return
+    stopFlagRef.current = false
+    setSimBusy(true)
+    try {
+      await speakIntoField(el, text.trim(), { shouldStop: () => stopFlagRef.current })
+    } finally {
+      setSimBusy(false)
+    }
+  }
+
+  function stopSim() {
+    stopFlagRef.current = true
+    setSimBusy(false)
+  }
+
+  return (
+    <div
+      data-devpanel-root="true"
+      className="thin-scroll fixed inset-y-0 left-0 z-40 flex w-[360px] flex-col overflow-y-auto"
+      style={{
+        background: 'var(--paper-raised)',
+        borderRight: '1px solid var(--paper-line)',
+        padding: '1rem 1.1rem 2rem',
+      }}
+    >
+      <h2 style={{ fontFamily: 'var(--font-sans)', fontSize: '0.85rem', color: 'var(--ink)', margin: '0 0 0.9rem' }}>
+        DevPanel <span style={{ color: 'var(--ink-faint)', fontWeight: 400 }}>?dev=1</span>
+      </h2>
+
+      {/* --- status ------------------------------------------------- */}
+      <section className="mb-4">
+        <Row label="connection">
+          <span
+            style={{
+              fontFamily: 'var(--font-sans)',
+              fontSize: '0.72rem',
+              color:
+                connStatus === 'connected' ? '#8fbf8a' : connStatus === 'connecting' ? 'var(--amber)' : 'var(--danger)',
+            }}
+          >
+            {connStatus}
+          </span>
+        </Row>
+        <Row label="floor state">
+          <span style={{ fontFamily: 'var(--font-sans)', fontSize: '0.72rem', color: 'var(--ink)' }}>{floorState}</span>
+        </Row>
+        <Row label="openai key">
+          <span style={{ fontFamily: 'var(--font-sans)', fontSize: '0.72rem', color: 'var(--ink)' }}>
+            {config.has_openai_key === null ? 'unknown' : config.has_openai_key ? 'present' : 'MISSING'}
+          </span>
+        </Row>
+        <Row label="mic">
+          <span style={{ fontFamily: 'var(--font-sans)', fontSize: '0.72rem', color: 'var(--ink)' }}>
+            {micStatus.available === null ? 'requesting…' : micStatus.available ? 'ok' : 'denied'}
+          </span>
+        </Row>
+        {micStatus.available === false && (
+          <p style={{ fontFamily: 'var(--font-sans)', fontSize: '0.68rem', color: 'var(--ink-faint)', margin: '0.2rem 0 0' }}>
+            Ducking disabled ({micStatus.detail || 'permission denied'}) — text-match barge-in still works, ~1s slower.
+          </p>
+        )}
+      </section>
+
+      {/* --- config sliders ------------------------------------------ */}
+      <section className="mb-4 border-t pt-3" style={{ borderColor: 'var(--paper-line)' }}>
+        <SliderRow
+          label="PAUSE_MS"
+          value={config.PAUSE_MS}
+          min={200}
+          max={2000}
+          step={50}
+          onChange={(v) => onSetConfig('PAUSE_MS', v)}
+        />
+        <SliderRow
+          label="GRACE_MS"
+          value={config.GRACE_MS}
+          min={500}
+          max={6000}
+          step={100}
+          onChange={(v) => onSetConfig('GRACE_MS', v)}
+        />
+        <SliderRow
+          label="CONF_FLOOR"
+          value={config.CONF_FLOOR}
+          min={0}
+          max={1}
+          step={0.01}
+          format={(v) => v.toFixed(2)}
+          onChange={(v) => onSetConfig('CONF_FLOOR', v)}
+        />
+        <SliderRow
+          label="COOLDOWN_S"
+          value={config.COOLDOWN_S}
+          min={0}
+          max={120}
+          step={1}
+          onChange={(v) => onSetConfig('COOLDOWN_S', v)}
+        />
+        <Row label="min utterances between (server)">
+          <span style={{ fontFamily: 'var(--font-sans)', fontSize: '0.72rem', color: 'var(--ink)' }}>
+            {config.MIN_UTTERANCES_BETWEEN}
+          </span>
+        </Row>
+      </section>
+
+      {/* --- ducking --------------------------------------------------- */}
+      <section className="mb-4 border-t pt-3" style={{ borderColor: 'var(--paper-line)' }}>
+        <Row label="duck on/off (client-local)">
+          <input type="checkbox" checked={duckEnabled} onChange={(e) => onSetDuckEnabled(e.target.checked)} />
+        </Row>
+        <SliderRow
+          label="duck threshold (RMS)"
+          value={duckThreshold}
+          min={0.01}
+          max={0.3}
+          step={0.01}
+          format={(v) => v.toFixed(2)}
+          onChange={onSetDuckThreshold}
+        />
+      </section>
+
+      {/* --- sim voiceOS ------------------------------------------------ */}
+      <section className="mb-4 border-t pt-3" style={{ borderColor: 'var(--paper-line)' }}>
+        <p style={{ fontFamily: 'var(--font-sans)', fontSize: '0.72rem', color: 'var(--ink-dim)', margin: '0 0 0.4rem' }}>
+          Sim VoiceOS
+        </p>
+        <textarea
+          value={simText}
+          onChange={(e) => setSimText(e.target.value)}
+          rows={3}
+          placeholder="Type something to dictate…"
+          className="thin-scroll w-full"
+          style={{
+            fontFamily: 'var(--font-sans)',
+            fontSize: '0.78rem',
+            color: 'var(--ink)',
+            background: 'var(--paper)',
+            border: '1px solid var(--paper-line)',
+            borderRadius: '6px',
+            padding: '0.4rem 0.5rem',
+            resize: 'vertical',
+          }}
+        />
+        <div className="mt-2 flex flex-wrap gap-2">
+          <Button onClick={() => runScript(simText)} disabled={simBusy || !simText.trim()}>
+            {simBusy ? 'Speaking…' : 'Speak'}
+          </Button>
+          <Button onClick={stopSim} disabled={!simBusy} tone="danger">
+            Stop
+          </Button>
+        </div>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <Button
+            onClick={() => {
+              setSimText(PLANTED_SCRIPT)
+              runScript(PLANTED_SCRIPT)
+            }}
+            disabled={simBusy}
+          >
+            Planted-contradiction script
+          </Button>
+          <Button
+            onClick={() => {
+              setSimText(BENIGN_SCRIPT)
+              runScript(BENIGN_SCRIPT)
+            }}
+            disabled={simBusy}
+          >
+            Benign script
+          </Button>
+        </div>
+      </section>
+
+      {/* --- floor tests ------------------------------------------------ */}
+      <section className="mb-4 border-t pt-3" style={{ borderColor: 'var(--paper-line)' }}>
+        <p style={{ fontFamily: 'var(--font-sans)', fontSize: '0.72rem', color: 'var(--ink-dim)', margin: '0 0 0.4rem' }}>
+          Floor machine
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={onFakeObjection} disabled={!floorIdle}>
+            Fake objection (client-only)
+          </Button>
+          <Button onClick={onBargeInNow} disabled={floorIdle}>
+            Barge-in now
+          </Button>
+          <Button onClick={onEchoNow} disabled={floorIdle}>
+            Echo now
+          </Button>
+        </div>
+      </section>
+
+      {/* --- replay + export --------------------------------------------- */}
+      <section className="mb-4 border-t pt-3" style={{ borderColor: 'var(--paper-line)' }}>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={onReplayStart}>Replay start</Button>
+          <Button onClick={onReplayStop}>Replay stop</Button>
+          <Button onClick={onDownload}>Download draft.md</Button>
+        </div>
+      </section>
+
+      {/* --- event log --------------------------------------------------- */}
+      <section className="border-t pt-3" style={{ borderColor: 'var(--paper-line)' }}>
+        <p style={{ fontFamily: 'var(--font-sans)', fontSize: '0.72rem', color: 'var(--ink-dim)', margin: '0 0 0.4rem' }}>
+          Event log
+        </p>
+        <div className="thin-scroll" style={{ maxHeight: '220px', overflowY: 'auto' }}>
+          {events.length === 0 && (
+            <p style={{ fontFamily: 'var(--font-sans)', fontSize: '0.68rem', color: 'var(--ink-faint)' }}>(empty)</p>
+          )}
+          {[...events].reverse().map((ev, i) => (
+            <div
+              key={events.length - i}
+              style={{
+                fontFamily: 'var(--font-sans)',
+                fontSize: '0.66rem',
+                color: 'var(--ink-dim)',
+                padding: '0.15rem 0',
+                borderBottom: '1px solid rgba(255,255,255,0.03)',
+              }}
+            >
+              <span style={{ color: 'var(--ink-faint)' }}>
+                {new Date(ev.ts).toLocaleTimeString([], { hour12: false })}
+              </span>{' '}
+              <span style={{ color: 'var(--amber)' }}>{ev.kind}</span>{' '}
+              <span>{ev.detail}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  )
+}

@@ -1,0 +1,15 @@
+# python
+.venv/
+__pycache__/
+*.pyc
+
+# node
+node_modules/
+web/dist/
+
+# secrets & machine-local config
+.env
+.claude/settings.local.json
+
+# logs
+*.log
