@@ -79,7 +79,7 @@ DUP_JACCARD_THRESHOLD: float = 0.6
 # ITS OWN utterance's critic verdict before returning without one. A verdict
 # that arrives later still fires normally (broadcast + mirrored) and surfaces
 # as `pending_objection` on a later tool result.
-MCP_OBJECTION_WAIT_S: float = _float_env("MCP_OBJECTION_WAIT_S", 2.0)
+MCP_OBJECTION_WAIT_S: float = _float_env("MCP_OBJECTION_WAIT_S", 12.0)
 
 # Convex live-share mirror (SPEC.md §14.B) and audience share links. Both
 # optional -- server/mirror.py is a silent no-op without CONVEX_URL, and an

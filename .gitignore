@@ -9,6 +9,8 @@ web/dist/
 
 # secrets & machine-local config
 .env
+web/.env
+web/.env.local
 .claude/settings.local.json
 
 # logs

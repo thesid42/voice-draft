@@ -52,15 +52,45 @@ wrap it up · read that back · ignore that · export · share this · new docum
 
 **One tab speaks.** Every connected tab receives the Critic's interrupt, but exactly one tab plays the audio (automatic leader election with failover; the DevPanel "audio" row shows which). Duplicate tabs used to each play the same clip a beat apart — which sounds like an echo even on earphones.
 
-## Connect VoiceOS as an MCP client (agent mode)
+## Connect VoiceOS as an MCP agent
 
-Draft is also an MCP server: the same pipeline is exposed at `http://localhost:8000/mcp` (streamable HTTP, 8 tools: `draft_add`, `draft_wrap_up`, `draft_read_back`, `draft_ignore_objection`, `draft_new_document`, `draft_get_document`, `draft_export`, `draft_share`). With the Draft server running:
+VoiceOS agent mode only launches **local stdio** MCP servers (Settings → Integrations → Custom Integrations). Draft already runs the real tools at `http://localhost:8000/mcp`; `scripts/voiceos_mcp.sh` is the stdio bridge VoiceOS spawns.
+
+### 1. Keep Draft running
+
+Same as usual: uvicorn on `:8000`, Vite on `:5173`, browser tab open on the doc (that is the stage view).
+
+### 2. Point VoiceOS at the bridge
+
+1. Open **VoiceOS → Settings → Integrations → Custom Integrations → Add**.
+2. **Name:** `Draft`
+3. **Launch command** (absolute path, executable):
 
 ```
-voiceos add mcp http://localhost:8000/mcp
+/absolute/path/to/voice-draft/scripts/voiceos_mcp.sh
 ```
 
-Then speak naturally in VoiceOS agent mode — "add to my draft: …", "read my draft back", "wrap up my draft". Tool results carry the Critic's objections (`objection` / `pending_objection`) so VoiceOS can voice them; the on-stage browser view updates live from the same in-process state. On the first MCP call the server auto-mutes browser TTS (`BROWSER_TTS` → 0, DevPanel-toggleable) so our Critic audio can't loop back through VoiceOS's mic. If VoiceOS's `add mcp` only accepts a local command (not a URL), a ~60-line stdio proxy over `POST /rpc` + `GET /state` is the demo-day fallback — see SPEC §14.
+4. Click **Connect**. Restart VoiceOS if tools do not appear.
+
+If `chmod +x` was lost after a clone: `chmod +x scripts/voiceos_mcp.sh`.
+
+### 3. Switch to agent mode and talk
+
+Use VoiceOS **agent mode** (not dictation-into-the-field). Say things like:
+
+| You say | Tool |
+|---|---|
+| "Add this to my draft: the pitch is a delivery fleet that skips traffic." | `draft_add` |
+| "What does the document say?" | `draft_get_document` |
+| "Read that back." | `draft_read_back` |
+| "Ignore that." / "Skip the editor." | `draft_ignore_objection` |
+| "Share this draft." | `draft_share` |
+| "Start a new document." | `draft_new_document` |
+| "Wrap it up." | `draft_wrap_up` |
+
+The browser doc updates live from the same session. If the Critic fires, the tool reply includes the objection so VoiceOS can speak it — answer out loud (`draft_add`) or dismiss it. First MCP call auto-mutes browser TTS (`BROWSER_TTS` → 0) so VoiceOS does not hear our Critic through the mic.
+
+Override the server URL if needed: `DRAFT_MCP_URL=http://127.0.0.1:8000/mcp` in the environment VoiceOS inherits (default is that URL).
 
 ## Convex live share (audience view)
 
@@ -98,7 +128,7 @@ That creates the deployment and prints its URL — put it in `.env` as `CONVEX_U
 6. Speaker volume: loud enough for the room, low enough that ducking + echo matcher cope. Headphones for rehearsal only — the demo needs the room to hear the Critic.
 7. Close the DevPanel (`?dev=1` off) for the actual demo. Zoom the browser so the doc is readable from the back.
 8. Kill notifications / focus assist on the demo machine (a toast stealing focus breaks VoiceOS targeting).
-9. MCP mode: `voiceos add mcp http://localhost:8000/mcp` accepted and a test "add to my draft" lands in the doc; confirm `BROWSER_TTS` auto-muted (DevPanel) so VoiceOS doesn't hear our Critic.
+9. MCP / agent mode: VoiceOS Custom Integration `Draft` → `scripts/voiceos_mcp.sh`; say "add this to my draft…" and confirm the browser doc updates; confirm `BROWSER_TTS` auto-muted so VoiceOS doesn't hear our Critic.
 10. Convex: `CONVEX_URL` in `.env`, phone loads the Pages watch URL, "Draft, share this" QR scans from the back row.
 
 ## Repo
