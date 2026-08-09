@@ -313,16 +313,16 @@ ONLY the final document as Markdown with a # title.
 ## 8. DevPanel (`?dev=1`) — build this EARLY, it is how everything gets tested without VoiceOS
 
 - Sim VoiceOS textarea + "Speak" button: splits input into sentences and commits them into CaptureField in bursts (300–900ms random gaps) to mimic dictation commit patterns. Goes through the real chunker.
-- Buttons: Planted-contradiction script (see below), Benign script, Barge-in now (injects non-matching text during AGENT_SPEAKING), Echo now (injects the current objection text — must be silently dropped).
-- Live sliders: `PAUSE_MS`, `CONF_FLOOR`, `COOLDOWN_S`, `GRACE_MS`, duck threshold, duck on/off.
+- Buttons: Planted-contradiction script (see below), Benign script, Undefined-term script, Lost-thread script (one rehearsal script per Critic sense — all four kinds demoable on demand), Fake objection (client-only, no key needed), Barge-in now (injects non-matching text during AGENT_SPEAKING), Echo now (injects the current objection text — must be silently dropped).
+- Live sliders: `PAUSE_MS`, `CONF_FLOOR`, `COOLDOWN_S`, `GRACE_MS`, duck threshold, duck on/off, browser TTS.
 - Replay controls: start/stop `demo/replay_script.json`.
 
-Planted-contradiction script (also the base of `replay_script.json`):
+Planted-contradiction script (also the base of `replay_script.json`; the four rehearsal scripts live in DevPanel.jsx and are mirrored in scripts/checkpoints.py — all live-model validated):
 
-1. "So the thing about our product is that users absolutely hate configuring things. Nobody wants settings."
-2. "The core flow has to work with zero setup, out of the box."
-3. "It's honestly ten times faster than anything out there." ← expect `vague_claim`
-4. "And for power users we're going to let them customize every single part of the pipeline." ← expect `contradiction` refs to the settings block
+1. "So the pitch is simple: our users hate configuring things. Nobody wants to touch a settings menu."
+2. "Everything has to work out of the box. You install it, and it just goes — zero setup, zero questions."
+3. "And honestly, it's ten times faster than anything else on the market." ← expect `vague_claim`
+4. "Oh, and for the power users, we're going to let them tweak every single knob in the pipeline. Full customization." ← expect `contradiction` refs to the settings block
 
 (Only one may fire immediately due to the cooldown — that's correct behavior; the second fires after the user "answers".)
 

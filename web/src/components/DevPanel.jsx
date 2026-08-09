@@ -5,19 +5,35 @@ import { speakIntoField } from '../devSim.js'
 // `data-devpanel-root` marks the subtree the focus guard (App.jsx) must
 // leave alone so these inputs stay usable.
 
+// Four rehearsal scripts — one per Critic sense (SPEC.md §8). All validated
+// against the live model: the planted lines MUST fire their labeled kinds and
+// the benign script MUST stay silent; keep checkpoints.py's copies in sync.
 const PLANTED_SCRIPT = [
-  'So the thing about our product is that users absolutely hate configuring things. Nobody wants settings.',
-  'The core flow has to work with zero setup, out of the box.',
-  "It's honestly ten times faster than anything out there.",
-  "And for power users we're going to let them customize every single part of the pipeline.",
+  'So the pitch is simple: our users hate configuring things. Nobody wants to touch a settings menu.',
+  'Everything has to work out of the box. You install it, and it just goes — zero setup, zero questions.',
+  "And honestly, it's ten times faster than anything else on the market.",
+  "Oh, and for the power users, we're going to let them tweak every single knob in the pipeline. Full customization.",
 ].join(' ')
 
 const BENIGN_SCRIPT = [
-  'I want to plan our team offsite for the second week of October.',
-  "We should keep it to two full days so people aren't away from their families too long.",
-  "Sarah suggested the lake house venue we used last year, since everyone who went said they'd want to go back.",
-  "Let's budget around three hundred dollars per person for travel and lodging combined.",
-  "I'll send a scheduling poll by Friday so we can lock the dates.",
+  'I want to get the team offsite planned for the second week of October.',
+  'Two full days, so nobody is away from their family longer than that.',
+  'Sarah suggested the lake house we rented last year, since everyone who went wants to go back.',
+  'Budget is three hundred dollars a person for travel and lodging, which finance has already approved.',
+  "I'll send the scheduling poll on Friday so we can lock the dates by end of month.",
+].join(' ')
+
+const UNDEFINED_TERM_SCRIPT = [
+  'The whole roadmap this quarter hangs on shipping the HDP before the conference.',
+  'Marketing wants the HDP on the landing page, and sales wants it in every deck.',
+  'If the HDP slips, we push the launch. That is how central it is.',
+].join(' ')
+
+const LOST_THREAD_SCRIPT = [
+  'I want to write the announcement for our seed round, and the tone has to be confident without being smug.',
+  'The key line is that we raised this money to double down on developer experience.',
+  'Speaking of experience, the barista this morning poured a leaf pattern into my latte in about four seconds flat.',
+  'Anyway, the weather has been wild lately. Apparently it might even snow this weekend, in October.',
 ].join(' ')
 
 function Row({ label, children }) {
@@ -286,6 +302,26 @@ export default function DevPanel({
             disabled={simBusy}
           >
             Benign script
+          </Button>
+        </div>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <Button
+            onClick={() => {
+              setSimText(UNDEFINED_TERM_SCRIPT)
+              runScript(UNDEFINED_TERM_SCRIPT)
+            }}
+            disabled={simBusy}
+          >
+            Undefined-term script
+          </Button>
+          <Button
+            onClick={() => {
+              setSimText(LOST_THREAD_SCRIPT)
+              runScript(LOST_THREAD_SCRIPT)
+            }}
+            disabled={simBusy}
+          >
+            Lost-thread script
           </Button>
         </div>
       </section>

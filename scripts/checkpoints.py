@@ -118,11 +118,12 @@ async def scenario_writer(c):
 async def scenario_critic(c):
     n0 = len(c.msgs)
     await c.say("draft, new document", gap=1.5)
+    # Kept identical to DevPanel.jsx's PLANTED_SCRIPT (validated live).
     planted = [
-        "So the thing about our product is that users absolutely hate configuring things. Nobody wants settings.",
-        "The core flow has to work with zero setup, out of the box.",
-        "It's honestly ten times faster than anything out there.",
-        "And for power users we're going to let them customize every single part of the pipeline.",
+        "So the pitch is simple: our users hate configuring things. Nobody wants to touch a settings menu.",
+        "Everything has to work out of the box. You install it, and it just goes — zero setup, zero questions.",
+        "And honestly, it's ten times faster than anything else on the market.",
+        "Oh, and for the power users, we're going to let them tweak every single knob in the pipeline. Full customization.",
     ]
     for s in planted:
         await c.say(s, gap=2.5)
@@ -167,11 +168,11 @@ async def scenario_critic(c):
     # Canonical benign script — kept identical to the DevPanel's BENIGN_SCRIPT
     # (web/src/components/DevPanel.jsx) so this suite exercises exactly what
     # the demo exercises.
-    for s in ["I want to plan our team offsite for the second week of October.",
-              "We should keep it to two full days so people aren't away from their families too long.",
-              "Sarah suggested the lake house venue we used last year, since everyone who went said they'd want to go back.",
-              "Let's budget around three hundred dollars per person for travel and lodging combined.",
-              "I'll send a scheduling poll by Friday so we can lock the dates."]:
+    for s in ["I want to get the team offsite planned for the second week of October.",
+              "Two full days, so nobody is away from their family longer than that.",
+              "Sarah suggested the lake house we rented last year, since everyone who went wants to go back.",
+              "Budget is three hundred dollars a person for travel and lodging, which finance has already approved.",
+              "I'll send the scheduling poll on Friday so we can lock the dates by end of month."]:
         await c.say(s, gap=2.5)
     await asyncio.sleep(12)
     check("critic: benign script stays silent", len(c.all_of("interrupt", since=n)) == 0, [m.get("message") for m in c.all_of("interrupt", since=n)])
