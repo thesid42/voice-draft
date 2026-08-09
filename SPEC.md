@@ -378,6 +378,7 @@ Run: `uvicorn server.main:app --reload --port 8000` from repo root, and `npm run
    Client initializes DevPanel sliders from it. `GRACE_MS`/`PAUSE_MS` are enforced client-side but the server is the config source of truth so slider values survive a page reload.
 2. New client→server control: `{"type":"control","action":"set_config","key":"CONF_FLOOR","value":0.8}` — server updates runtime config; unknown keys are logged and ignored. After a change the server re-broadcasts `hello` to all clients.
 3. New server→client broadcast: `{"type":"objection_update","id":"o3","status":"answered"}` (status `answered` or `dismissed`) — sent whenever an objection leaves `spoken`. This is the authoritative signal for clients to clear glow/banner; without it, a voice-dismiss ("draft, ignore that", routed server-side) would never reach the browser.
+4. Refresh semantics: the main tab sends `{"type":"control","action":"fresh_session"}` **once per page load** (not on WS reconnects — a wifi blip must never wipe the doc; `?observe=1` tabs never send it). Server: reset iff the session has content AND no replay is running. Complementarily, on every WS connect the server unicasts a full `doc_update` snapshot (all statuses `unchanged`) when blocks exist, so clients that don't reset see the real session instead of a deceptively blank page.
 
 ### B. Objection lifecycle
 

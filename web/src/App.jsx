@@ -144,9 +144,14 @@ function FinalView({ markdown, onDownload }) {
 
 export default function App() {
   const isDev = useMemo(() => new URLSearchParams(window.location.search).get('dev') === '1', [])
+  // ?observe=1: read-only second tab — must NEVER wipe the live session.
+  const isObserver = useMemo(() => new URLSearchParams(window.location.search).get('observe') === '1', [])
 
   const captureFieldRef = useRef(null)
   const wsRef = useRef(null)
+  // Fresh page load = fresh session (sent once per load, not on reconnects,
+  // so a wifi blip mid-demo can never wipe the document).
+  const freshSessionSentRef = useRef(false)
   const floorRef = useRef(null)
   const audioRef = useRef(null)
 
@@ -394,6 +399,10 @@ export default function App() {
       },
       onOpen: () => {
         wsRef.current?.send({ type: 'control', action: 'start_session' })
+        if (!freshSessionSentRef.current && !isObserver) {
+          freshSessionSentRef.current = true
+          wsRef.current?.send({ type: 'control', action: 'fresh_session' })
+        }
       },
     })
     wsRef.current = client

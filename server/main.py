@@ -34,6 +34,7 @@ from server.mcp_server import MCPDeps, build_mcp_server
 from server.session import (
     Objection,
     SessionState,
+    doc_update_blocks,
     get_last_block_text,
     objection_to_dict,
     render_markdown,
@@ -157,6 +158,17 @@ async def _handle_control(data: dict) -> None:
         # Log-only on the server; the forwarded utterance that follows does
         # the actual state work (§13.B).
         logger.info("control action=barged_in")
+    elif action == "fresh_session":
+        # Sent once per PAGE LOAD by the main tab (§13.A.4): a refresh means
+        # "clean take". Reconnects and ?observe=1 tabs never send it, and a
+        # running replay is never clobbered by a stray refresh.
+        if replay.is_running():
+            logger.info("fresh_session ignored: replay running")
+        elif state.transcript or state.block_order or state.title or state.objections:
+            logger.info("fresh_session: resetting stale session")
+            await _handle_reset()
+        else:
+            logger.info("fresh_session: session already clean")
     elif action == "dismiss_objection":
         await _handle_dismiss(data.get("objection_id"))
     elif action == "finish":
@@ -342,6 +354,15 @@ async def ws_endpoint(websocket: WebSocket) -> None:
         # all connected clients uniformly (§13.E) -- a second observer tab
         # that's already open will just harmlessly re-apply the same config.
         await broadcast(_hello_message())
+        # Late joiner / refresh: reflect the real session instead of a
+        # deceptively blank page (§13.A.4). Statuses all "unchanged" so
+        # nothing flashes. Unicast — existing clients already have it.
+        if state.block_order:
+            await websocket.send_text(json.dumps({
+                "type": "doc_update",
+                "title": state.title,
+                "blocks": doc_update_blocks(state, {}),
+            }))
         while True:
             raw = await websocket.receive_text()
             try:
