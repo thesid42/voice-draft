@@ -88,6 +88,14 @@ verbatim**; paraphrase freely everywhere else.
 
 ---
 
+## 60-second video cut
+
+Shoot ~2.5 min, edit to 60 (jump-cut through model latency). Six beats: cold-open live writing (0–5s) → Critic interrupts out loud + both blocks glow (5–25s, the money shot — record system audio, subtitle the objection) → answer by voice, paragraphs visibly reconcile (25–33s) → "Draft, share this" + QR + 3s phone b-roll (33–41s) → VoiceOS agent mode: "What drafts do I have?" / "Open the meetings memo" / one continuing line (41–51s) → "Draft, wrap it up" + final view + end card (51–60s).
+
+Speak (validated, verbatim on the traps): intro line → **"Draft ships with no settings at all. We deleted the preferences menu — that's the whole religion."** → **"Out of the box it just goes. Install, talk, and you're drafting — zero setup, zero questions."** → **"Oh, and for the power users, we're going to let them tweak every single knob in the pipeline. Full customization."** → Critic fires the no-settings-vs-knobs contradiction → concede: "Ha — caught me. The knobs stay buried unless you go digging…" → share → agent beat → wrap up.
+
+Prep: fresh session, COOLDOWN_S=20, DevPanel closed, browser zoomed, system-audio recording ON, Convex configured with a stored "War on Meetings" draft (speak the meetings script once and wrap it), beats 1–7 and beat 8 as separate takes (the first MCP call auto-mutes browser TTS — fine, no critic beats after). End-card caption for everything that didn't fit: "Echo-protected · 5 critic senses · MCP server for VoiceOS · Convex-persistent · OpenAI end-to-end."
+
 ## Why these traps (if a judge asks)
 
 - Trap A in both is a **naked number** — `vague_claim` is the Critic's most reliable sense.
