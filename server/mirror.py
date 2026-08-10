@@ -91,3 +91,25 @@ def close_and_rotate(old_slug: str) -> None:
     closes `old_slug`.
     """
     _fire("sessions:close", {"slug": old_slug}, slug=old_slug)
+
+
+# --- Reads (drafts-history UI; SPEC.md §14.B) ------------------------------
+# Unlike the fire-and-forget writers above, these are awaited by the
+# /drafts endpoints and RAISE on network errors (the endpoint reports a
+# clean 502). Still None without CONVEX_URL.
+
+def _query_sync(fn_name: str, args: dict):
+    client = _get_client()
+    if client is None:
+        return None
+    return client.query(fn_name, args)
+
+
+async def fetch_sessions():
+    """sessions:list — newest first, for the drafts sidebar."""
+    return await asyncio.to_thread(_query_sync, "sessions:list", {})
+
+
+async def fetch_session(slug: str):
+    """sessions:getBySlug — one stored draft, full content."""
+    return await asyncio.to_thread(_query_sync, "sessions:getBySlug", {"slug": slug})

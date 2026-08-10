@@ -46,7 +46,7 @@ Without a key it verifies the protocol layer (hello/set_config/export/reset/404s
 
 ## Voice commands (say "Draft, …")
 
-wrap it up · read that back · ignore that · export · share this · new document
+wrap it up · read that back · ignore that · export · share this · history · new document
 
 **Refresh = new take.** Reloading the main tab starts a fresh session (the old transcript is dropped server-side too). WS reconnects after a network blip never reset, a running replay is never clobbered, and a second read-only tab should use `?observe=1` so it joins without wiping anything (it receives the current document on connect).
 
@@ -107,6 +107,8 @@ npx convex dev --once
 ```
 
 That creates the deployment and prints its URL — put it in `.env` as `CONVEX_URL=` (server mirror) and in the repo secret `VITE_CONVEX_URL` (audience page build). The audience page deploys to GitHub Pages via `.github/workflows/deploy-watch.yml` on push; then set `AUDIENCE_BASE_URL=https://thesid42.github.io/voice-draft/watch.html#` in `.env`. Without `CONVEX_URL` everything still runs — the mirror is a silent no-op.
+
+**In-app history:** the "Drafts" button (top right) or saying **"Draft, history"** opens a sidebar listing every stored session — click one to read it (final polished version when it exists). The panel reads through the server (`GET /drafts`), so the main bundle carries no Convex client; until `CONVEX_URL` is set it shows setup instructions instead.
 
 ## Tuning (live sliders in DevPanel; defaults in `.env` / `server/config.py`)
 

@@ -43,6 +43,8 @@ def route(text: str) -> RouteResult:
             return RouteResult("dismiss", text, normalized)
         if "export" in rest:
             return RouteResult("export", text, normalized)
+        if "history" in rest or "drafts" in rest:
+            return RouteResult("history", text, normalized)
         if "share" in rest:
             return RouteResult("share", text, normalized)
         if "new" in rest or "start over" in rest:

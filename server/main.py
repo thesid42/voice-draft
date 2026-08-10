@@ -115,6 +115,9 @@ async def _handle_utterance(data: dict) -> None:
         await _handle_export()
     elif result.kind == "share":
         await _handle_share()
+    elif result.kind == "history":
+        logger.info("history: opening drafts panel")
+        await broadcast({"type": "drafts_panel"})
     elif result.kind == "reset":
         await _handle_reset()
 
@@ -415,6 +418,58 @@ async def replay_stop() -> JSONResponse:
 @app.get("/state")
 async def get_state() -> JSONResponse:
     return JSONResponse(session_snapshot(state))
+
+
+@app.get("/drafts")
+async def list_drafts() -> JSONResponse:
+    """Drafts-history sidebar data — read back from the Convex mirror."""
+    if not config.CONVEX_URL:
+        return JSONResponse({"configured": False, "drafts": [], "current_slug": state.slug})
+    try:
+        rows = await mirror.fetch_sessions() or []
+    except Exception as exc:  # noqa: BLE001 - endpoint must report, not crash
+        logger.info("drafts list failed: %s", exc)
+        return JSONResponse(
+            {"configured": True, "error": "could not reach Convex", "drafts": []},
+            status_code=502,
+        )
+    drafts = [
+        {
+            "slug": r.get("slug"),
+            "title": (r.get("title") or "").strip() or "Untitled",
+            "status": r.get("status"),
+            "updatedAt": r.get("updatedAt"),
+            "blocks": len(r.get("blocks") or []),
+            "hasFinal": bool(r.get("finalMarkdown")),
+        }
+        for r in rows
+    ]
+    return JSONResponse({"configured": True, "drafts": drafts, "current_slug": state.slug})
+
+
+@app.get("/drafts/{slug}")
+async def get_draft(slug: str) -> JSONResponse:
+    """One stored draft, full content (read-only viewer)."""
+    if not config.CONVEX_URL:
+        return JSONResponse({"error": "convex not configured"}, status_code=404)
+    try:
+        row = await mirror.fetch_session(slug)
+    except Exception as exc:  # noqa: BLE001
+        logger.info("draft fetch failed slug=%s: %s", slug, exc)
+        return JSONResponse({"error": "could not reach Convex"}, status_code=502)
+    if not row:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return JSONResponse(
+        {
+            "slug": row.get("slug"),
+            "title": (row.get("title") or "").strip() or "Untitled",
+            "status": row.get("status"),
+            "updatedAt": row.get("updatedAt"),
+            "blocks": row.get("blocks") or [],
+            "objections": row.get("objections") or [],
+            "finalMarkdown": row.get("finalMarkdown"),
+        }
+    )
 
 
 @app.post("/rpc")

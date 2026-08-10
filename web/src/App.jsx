@@ -10,6 +10,7 @@ import Document from './components/Document.jsx'
 import Orb from './components/Orb.jsx'
 import InterruptBanner from './components/InterruptBanner.jsx'
 import ShareOverlay from './components/ShareOverlay.jsx'
+import DraftsPanel from './components/DraftsPanel.jsx'
 import DevPanel from './components/DevPanel.jsx'
 import SettingsPanel from './components/SettingsPanel.jsx'
 
@@ -186,6 +187,7 @@ export default function App() {
   const [shareUrl, setShareUrl] = useState(null)
   const [shareDismissSignal, setShareDismissSignal] = useState(0)
   const [audioRole, setAudioRole] = useState('muted') // 'speaker' | 'muted' | 'observer'
+  const [draftsOpen, setDraftsOpen] = useState(false)
 
   const logEvent = useCallback((kind, detail = '') => {
     setEvents((prev) => {
@@ -326,6 +328,14 @@ export default function App() {
                 floorRef.current?.audioEnded(configRef.current.GRACE_MS)
               })
           }
+          break
+        }
+
+        case 'drafts_panel': {
+          // Voice command "Draft, history" (router kind=history) opens the
+          // stored-drafts sidebar — same panel as the Drafts button.
+          setDraftsOpen(true)
+          logEvent('drafts_panel', 'opened by voice')
           break
         }
 
@@ -617,6 +627,26 @@ export default function App() {
       />
       <ConnDot status={connStatus} />
       <SettingsPanel config={config} onSetConfig={handleSetServerConfig} />
+
+      <button
+        type="button"
+        onClick={() => setDraftsOpen(true)}
+        className="fixed top-6 right-24 z-30 sm:right-32"
+        style={{
+          fontFamily: 'var(--font-sans)',
+          fontSize: '0.65rem',
+          letterSpacing: '0.12em',
+          textTransform: 'uppercase',
+          color: 'var(--ink-faint)',
+          background: 'transparent',
+          border: 'none',
+          cursor: 'pointer',
+        }}
+        title='Stored drafts — or say "Draft, history"'
+      >
+        Drafts
+      </button>
+      <DraftsPanel open={draftsOpen} onClose={() => setDraftsOpen(false)} />
 
       <CaptureField
         textareaRef={captureFieldRef}
