@@ -47,6 +47,11 @@ class MCPDeps:
     handle_export: Callable[[], Awaitable[str]]
     handle_share: Callable[[], Awaitable[str]]
     snapshot: Callable[[], dict]
+    # Stored-drafts history + resume (SPEC.md §14.B): list returns indexed
+    # summaries; resume matches a spoken query (index/title/slug) and loads
+    # that draft into the live session.
+    list_drafts: Callable[[], Awaitable[dict]]
+    resume_draft: Callable[[str], Awaitable[dict]]
 
 
 def _objection_seq(objection_id: str) -> int:
@@ -175,5 +180,30 @@ def build_mcp_server(deps: MCPDeps) -> MCPServer:
         await _maybe_flip_browser_tts()
         url = await deps.handle_share()
         return _finalize({"ok": True, "url": url})
+
+    @mcp.tool(
+        description=(
+            "List the user's stored drafts, newest first, when they ask what "
+            "drafts they have. Read the titles back with their index numbers "
+            "so they can pick one by number or by name."
+        )
+    )
+    async def draft_list() -> dict:
+        logger.info("mcp tool=draft_list")
+        await _maybe_flip_browser_tts()
+        return _finalize(await deps.list_drafts())
+
+    @mcp.tool(
+        description=(
+            "Open a stored draft and resume editing it. Pass `query` exactly "
+            "as the user referred to it: an index number from draft_list, "
+            "words from its title, or its slug. After this succeeds, "
+            "everything they dictate continues THAT document."
+        )
+    )
+    async def draft_open(query: str) -> dict:
+        logger.info("mcp tool=draft_open query=%r", query)
+        await _maybe_flip_browser_tts()
+        return _finalize(await deps.resume_draft(query))
 
     return mcp

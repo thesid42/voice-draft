@@ -86,6 +86,8 @@ Use VoiceOS **agent mode** (not dictation-into-the-field). Say things like:
 | "Ignore that." / "Skip the editor." | `draft_ignore_objection` |
 | "Share this draft." | `draft_share` |
 | "Start a new document." | `draft_new_document` |
+| "What drafts do I have?" | `draft_list` |
+| "Open the second one." / "Open the offsite memo." | `draft_open` — resumes that stored draft; everything you say next continues it |
 | "Wrap it up." | `draft_wrap_up` |
 
 The browser doc updates live from the same session. If the Critic fires, the tool reply includes the objection so VoiceOS can speak it — answer out loud (`draft_add`) or dismiss it. First MCP call auto-mutes browser TTS (`BROWSER_TTS` → 0) so VoiceOS does not hear our Critic through the mic.

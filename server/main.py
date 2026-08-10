@@ -36,6 +36,7 @@ from server.session import (
     SessionState,
     doc_update_blocks,
     get_last_block_text,
+    load_snapshot,
     objection_to_dict,
     render_markdown,
     reset_state,
@@ -174,6 +175,12 @@ async def _handle_control(data: dict) -> None:
             logger.info("fresh_session: session already clean")
     elif action == "dismiss_objection":
         await _handle_dismiss(data.get("objection_id"))
+    elif action == "resume_draft":
+        slug = data.get("slug")
+        if slug:
+            await _handle_resume(str(slug))
+        else:
+            logger.info("resume_draft ignored: no slug")
     elif action == "finish":
         await _handle_finish()
     elif action == "share":
@@ -269,6 +276,135 @@ async def _handle_reset() -> str:
     return state.slug
 
 
+# --- Stored-drafts helpers (SPEC.md §14.B: history + resume) ---------------
+
+async def _drafts_summary() -> list[dict]:
+    """Non-empty stored drafts, newest first (empty boot rows filtered)."""
+    rows = await mirror.fetch_sessions() or []
+    out = []
+    for r in rows:
+        blocks = r.get("blocks") or []
+        if not blocks and not r.get("finalMarkdown"):
+            continue
+        out.append(
+            {
+                "slug": r.get("slug"),
+                "title": (r.get("title") or "").strip() or "Untitled",
+                "status": r.get("status"),
+                "updatedAt": r.get("updatedAt"),
+                "blocks": len(blocks),
+                "hasFinal": bool(r.get("finalMarkdown")),
+            }
+        )
+    return out
+
+
+_WORD_NUMS = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+    "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+    "first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5,
+    "sixth": 6, "seventh": 7, "eighth": 8, "ninth": 9, "tenth": 10,
+    "latest": 1, "last": 1, "newest": 1,
+}
+
+
+async def _resolve_draft_query(query: str):
+    """Match how a user *said* a draft: slug, list index (digit or word),
+    or title words. Returns (match, drafts, error)."""
+    drafts = await _drafts_summary()
+    if not drafts:
+        return None, [], "no stored drafts"
+    q = router.normalize(query or "")
+    if not q:
+        return None, drafts, "empty query"
+    for d in drafts:
+        if d["slug"] and (q == d["slug"] or q.replace(" ", "-") == d["slug"]):
+            return d, drafts, None
+    tokens = [t for t in q.split(" ") if t]
+    if len(tokens) == 1:
+        num = int(tokens[0]) if tokens[0].isdigit() else _WORD_NUMS.get(tokens[0])
+        if num and 1 <= num <= len(drafts):
+            return drafts[num - 1], drafts, None
+    qt = set(tokens) - {"draft", "the", "a", "an", "my", "open"}
+    if qt:
+        for d in drafts:  # newest first: all query words in the title
+            if qt <= set(router.normalize(d["title"]).split(" ")):
+                return d, drafts, None
+        for d in drafts:  # relaxed: any overlap
+            if qt & set(router.normalize(d["title"]).split(" ")):
+                return d, drafts, None
+    return None, drafts, "no match"
+
+
+async def _handle_resume(slug: str) -> Optional[dict]:
+    """Load a stored draft into the live session (adopting its slug) so the
+    user continues editing THAT document. Refused while replay runs."""
+    if replay.is_running():
+        logger.info("resume ignored: replay running")
+        return None
+    row = await mirror.fetch_session(slug)
+    if not row:
+        logger.info("resume failed: slug=%r not found", slug)
+        return None
+    old_slug = state.slug
+    if old_slug != slug:
+        mirror.close_and_rotate(old_slug)
+    load_snapshot(state, row)
+    mirror.reopen(state.slug)
+    logger.info("resume: slug=%s blocks=%d (was %s)", state.slug, len(state.block_order), old_slug)
+    await broadcast({"type": "reset"})
+    await broadcast(_hello_message())
+    if state.block_order:
+        await broadcast(
+            {"type": "doc_update", "title": state.title, "blocks": doc_update_blocks(state, {})}
+        )
+    return {"slug": state.slug, "title": state.title or "Untitled", "blocks": len(state.block_order)}
+
+
+_CONVEX_HINT = (
+    "Convex is not configured on the laptop -- run npx convex login, "
+    "npx convex dev --once, put the URL in .env as CONVEX_URL, restart."
+)
+
+
+async def _mcp_list_drafts() -> dict:
+    if not config.CONVEX_URL:
+        return {"ok": False, "configured": False, "drafts": [], "hint": _CONVEX_HINT}
+    try:
+        drafts = await _drafts_summary()
+    except Exception as exc:  # noqa: BLE001
+        logger.info("mcp draft_list failed: %s", exc)
+        return {"ok": False, "configured": True, "error": "could not reach Convex", "drafts": []}
+    return {
+        "ok": True,
+        "configured": True,
+        "drafts": [{**d, "index": i + 1} for i, d in enumerate(drafts)],
+        "current_slug": state.slug,
+    }
+
+
+async def _mcp_resume_draft(query: str) -> dict:
+    if not config.CONVEX_URL:
+        return {"ok": False, "configured": False, "hint": _CONVEX_HINT}
+    try:
+        match, drafts, err = await _resolve_draft_query(query)
+    except Exception as exc:  # noqa: BLE001
+        logger.info("mcp draft_open failed: %s", exc)
+        return {"ok": False, "configured": True, "error": "could not reach Convex"}
+    if match is None:
+        return {
+            "ok": False,
+            "error": err,
+            "candidates": [
+                {"index": i + 1, "title": d["title"]} for i, d in enumerate(drafts[:3])
+            ],
+        }
+    summary = await _handle_resume(match["slug"])
+    if summary is None:
+        return {"ok": False, "error": "could not load that draft (replay running?)"}
+    return {"ok": True, **summary}
+
+
 # --- MCP (SPEC.md §14.A) --------------------------------------------------
 # draft_add's own pipeline entry: router-defensive (content path only, even
 # if the text would parse as a command -- the sibling tools ARE the command
@@ -321,6 +457,8 @@ mcp_deps = MCPDeps(
     handle_export=_handle_export,
     handle_share=_handle_share,
     snapshot=lambda: session_snapshot(state),
+    list_drafts=_mcp_list_drafts,
+    resume_draft=_mcp_resume_draft,
 )
 mcp = build_mcp_server(mcp_deps)
 
@@ -426,24 +564,13 @@ async def list_drafts() -> JSONResponse:
     if not config.CONVEX_URL:
         return JSONResponse({"configured": False, "drafts": [], "current_slug": state.slug})
     try:
-        rows = await mirror.fetch_sessions() or []
+        drafts = await _drafts_summary()
     except Exception as exc:  # noqa: BLE001 - endpoint must report, not crash
         logger.info("drafts list failed: %s", exc)
         return JSONResponse(
             {"configured": True, "error": "could not reach Convex", "drafts": []},
             status_code=502,
         )
-    drafts = [
-        {
-            "slug": r.get("slug"),
-            "title": (r.get("title") or "").strip() or "Untitled",
-            "status": r.get("status"),
-            "updatedAt": r.get("updatedAt"),
-            "blocks": len(r.get("blocks") or []),
-            "hasFinal": bool(r.get("finalMarkdown")),
-        }
-        for r in rows
-    ]
     return JSONResponse({"configured": True, "drafts": drafts, "current_slug": state.slug})
 
 

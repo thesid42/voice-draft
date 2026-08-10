@@ -227,3 +227,49 @@ def reset_state(state: SessionState) -> None:
     state._objection_seq = 0
     state._readback_seq = 0
     state.slug = _mint_slug()
+
+
+def load_snapshot(state: SessionState, row: dict) -> None:
+    """Resume a stored draft (MCP draft_open, SPEC.md §14.B): replace the
+    live session with the stored row's content and ADOPT ITS SLUG, so every
+    subsequent edit mirrors into the same Convex row.
+
+    The transcript is not stored in Convex, so it restarts empty -- from here
+    the Writer/Critic work from the loaded blocks plus new utterances.
+    reset_state() first: bumps generation so in-flight writer/critic runs
+    from the previous session can never leak into the resumed one.
+    """
+    reset_state(state)
+    state.slug = (row.get("slug") or state.slug).strip() or state.slug
+    state.title = (row.get("title") or "").strip()
+
+    for b in row.get("blocks") or []:
+        bid = b.get("id") if isinstance(b, dict) else None
+        text = (b.get("text") if isinstance(b, dict) else str(b)) or ""
+        if not bid:
+            bid = state.next_block_id()
+        state.note_block_id(bid)
+        state.blocks[bid] = text
+        state.block_order.append(bid)
+
+    # Loaded objections keep the Critic's dedup memory across the resume.
+    # Anything still 'spoken' in the stored row is stale -- mark answered.
+    for o in row.get("objections") or []:
+        if not isinstance(o, dict):
+            continue
+        status = o.get("status") or "answered"
+        if status == "spoken":
+            status = "answered"
+        oid = o.get("id") or state.next_objection_id()
+        state.objections.append(
+            Objection(
+                id=oid,
+                kind=o.get("kind") or "note",
+                message=o.get("message") or "",
+                refs=list(o.get("refs") or []),
+                status=status,
+            )
+        )
+        seq = oid[1:]
+        if oid[:1] == "o" and seq.isdigit() and int(seq) > state._objection_seq:
+            state._objection_seq = int(seq)

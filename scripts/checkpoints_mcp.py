@@ -24,6 +24,7 @@ RESULTS = []
 EXPECTED_TOOLS = {
     "draft_add", "draft_wrap_up", "draft_read_back", "draft_ignore_objection",
     "draft_new_document", "draft_get_document", "draft_export", "draft_share",
+    "draft_list", "draft_open",
 }
 
 
@@ -111,8 +112,22 @@ async def main():
 
                 tools = await session.list_tools()
                 names = {t.name for t in tools.tools}
-                check("mcp: exactly 8 tools", len(tools.tools) == 8, names)
+                check("mcp: exactly 10 tools", len(tools.tools) == 10, names)
                 check("mcp: tool names match expected set", names == EXPECTED_TOOLS, names)
+
+                # -- stored-drafts tools degrade cleanly without CONVEX_URL --
+                dl = tool_result(await session.call_tool("draft_list", {}))
+                check(
+                    "mcp: draft_list keyless/convexless shape",
+                    isinstance(dl, dict) and "drafts" in dl and (dl.get("ok") is True or dl.get("configured") is False),
+                    dl,
+                )
+                do = tool_result(await session.call_tool("draft_open", {"query": "nonexistent draft"}))
+                check(
+                    "mcp: draft_open tolerates no-match/no-convex",
+                    isinstance(do, dict) and do.get("ok") is not True,
+                    do,
+                )
 
                 # -- draft_add x2 (planted-contradiction script lines 1-2, SPEC.md §8) --
                 r1 = tool_result(await session.call_tool("draft_add", {

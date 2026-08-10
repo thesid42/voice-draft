@@ -93,6 +93,11 @@ def close_and_rotate(old_slug: str) -> None:
     _fire("sessions:close", {"slug": old_slug}, slug=old_slug)
 
 
+def reopen(slug: str) -> None:
+    """Flip a stored draft back to live on resume (MCP draft_open)."""
+    _fire("sessions:reopen", {"slug": slug}, slug=slug)
+
+
 # --- Reads (drafts-history UI; SPEC.md §14.B) ------------------------------
 # Unlike the fire-and-forget writers above, these are awaited by the
 # /drafts endpoints and RAISE on network errors (the endpoint reports a

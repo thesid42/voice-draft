@@ -68,7 +68,9 @@ export const updateDoc = mutation({
   handler: async (ctx, { slug, title, blocks }) => {
     const existing = await findBySlug(ctx, slug);
     if (existing) {
-      await ctx.db.patch(existing._id, { title, blocks, updatedAt: Date.now() });
+      // status "live": a row being actively written IS live — this also
+      // revives a finished row the user resumed via draft_open.
+      await ctx.db.patch(existing._id, { title, blocks, status: "live", updatedAt: Date.now() });
       return existing._id;
     }
     return await ctx.db.insert("sessions", {
@@ -153,6 +155,17 @@ export const close = mutation({
       });
     }
     await ctx.db.patch(existing._id, { status: "finished", updatedAt: Date.now() });
+    return existing._id;
+  },
+});
+
+// Resume editing a stored draft (MCP draft_open): flip it back to live.
+export const reopen = mutation({
+  args: { slug: v.string() },
+  handler: async (ctx, { slug }) => {
+    const existing = await findBySlug(ctx, slug);
+    if (!existing) return null;
+    await ctx.db.patch(existing._id, { status: "live", updatedAt: Date.now() });
     return existing._id;
   },
 });

@@ -105,6 +105,42 @@ def _speak(tool: str, payload: dict) -> str:
         if not url:
             return "Could not create a share link." + extra
         return f"Share link is ready: {url}" + extra
+    if tool == "draft_list":
+        if payload.get("configured") is False:
+            return "Draft history needs Convex set up on the laptop first." + extra
+        drafts = payload.get("drafts") or []
+        if not drafts:
+            return "You have no stored drafts yet." + extra
+        parts = []
+        for d in drafts[:6]:
+            label = f"{d.get('index')}: {d.get('title')}"
+            if d.get("status") == "finished":
+                label += ", finished"
+            parts.append(label)
+        more = f" And {len(drafts) - 6} more." if len(drafts) > 6 else ""
+        return (
+            f"You have {len(drafts)} stored draft{'s' if len(drafts) != 1 else ''}. "
+            + ". ".join(parts)
+            + "."
+            + more
+            + " Say open draft and the number or name."
+            + extra
+        )
+    if tool == "draft_open":
+        if payload.get("configured") is False:
+            return "Draft history needs Convex set up on the laptop first."
+        if not payload.get("ok"):
+            cands = payload.get("candidates") or []
+            if cands:
+                names = "; ".join(f"{c.get('index')}: {c.get('title')}" for c in cands)
+                return f"I couldn't match that draft. Closest: {names}. Which one?"
+            return "I couldn't find that draft." + extra
+        title = payload.get("title") or "Untitled"
+        n = payload.get("blocks") or 0
+        return (
+            f"Opened {title} — {n} paragraph{'s' if n != 1 else ''}. "
+            "Keep talking to continue it." + extra
+        )
     return json.dumps(payload)
 
 
@@ -206,6 +242,28 @@ async def draft_export() -> str:
 @mcp.tool(description="Create a shareable live-audience URL for the current document.")
 async def draft_share() -> str:
     return await _forward("draft_share")
+
+
+@mcp.tool(
+    description=(
+        "List the user's stored drafts with index numbers when they ask what "
+        "drafts they have or want to continue an earlier one. Read the list "
+        "back so they can pick by number or name."
+    )
+)
+async def draft_list() -> str:
+    return await _forward("draft_list")
+
+
+@mcp.tool(
+    description=(
+        "Open a stored draft to continue editing it. Pass query exactly as "
+        "the user referred to it: the number from draft_list, words from the "
+        "title, or the slug. After this, draft_add continues that document."
+    )
+)
+async def draft_open(query: str) -> str:
+    return await _forward("draft_open", {"query": query})
 
 
 if __name__ == "__main__":
